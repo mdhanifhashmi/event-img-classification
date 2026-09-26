@@ -1,0 +1,12 @@
+# Install the CPU build of PyTorch before this file. See README.md.
+# A plain "pip install torch" on Windows can pull a much larger CUDA build.
+torch>=2.2.0
+torchvision>=0.17.0
+transformers>=4.46.0
+sentencepiece>=0.2.0
+pillow>=10.2.0
+pillow-heif>=0.16.0
+numpy>=1.26.0
+pyyaml>=6.0.1
+tqdm>=4.66.0
+streamlit>=1.50.0

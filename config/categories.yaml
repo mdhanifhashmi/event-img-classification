@@ -1,0 +1,28 @@
+# Event photo groups. Edit the prompts in your own words, then sort again.
+# A photo is copied into every group whose score is at least min_score.
+# If nothing reaches min_score, it is copied into the review folder.
+# Scores are SigLIP probabilities (0 to 1). The published cat example scores
+# about 0.32 on the right description. Lower min_score if too many photos
+# land in review; raise it if groups get too mixed.
+
+model: google/siglip-base-patch16-224
+min_score: 0.10
+review_label: Needs review
+
+categories:
+  - name: Stage
+    prompt: a photo of an event stage, mandap, or raised performance platform
+  - name: Decoration
+    prompt: a photo of event decoration, flowers, a floral backdrop, or drapes
+  - name: Guests
+    prompt: a photo of guests or a crowd of people at an event
+  - name: Ceremony
+    prompt: a photo of a ceremony in progress at a wedding or event
+  - name: Food
+    prompt: a photo of food, drinks, a buffet, or catering at an event
+  - name: Venue
+    prompt: a photo of an event venue, banquet hall, entrance, or building exterior
+  - name: Portrait
+    prompt: a posed portrait of one or two people at an event
+  - name: Lighting
+    prompt: a photo of decorative lighting, chandeliers, or light fixtures at an event
