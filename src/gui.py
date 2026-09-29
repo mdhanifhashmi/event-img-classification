@@ -1,4 +1,4 @@
-"""Rounded window for choosing folders and sorting event photos."""
+﻿"""Rounded window for choosing folders and sorting event photos."""
 
 from __future__ import annotations
 
@@ -13,23 +13,34 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from src.icons import GROUP_ICONS, ctk_icon, write_app_icon
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "config" / "categories.yaml"
+APP_ICON = ROOT / "assets" / "app.ico"
 
-BG = "#EFECE6"
-SURFACE = "#FBF9F6"
-INK = "#1A1916"
-MUTED = "#746E66"
-LINE = "#E3DDD4"
-FIELD = "#F4F1EB"
-ACCENT = "#8C5E3C"
-ACCENT_HOVER = "#734B30"
-RAIL = "#1A1916"
-RAIL_MUTED = "#B7B1A6"
-DANGER = "#9B3A2F"
-OK = "#3F6B4E"
-BUSY = "#C4A484"
-CREAM = "#F6F3EC"
+BLUE = "#106EBE"
+BLUE_DEEP = "#0B4F8C"
+BLUE_HOVER = "#0C8FD4"
+MINT = "#0FFCBE"
+MINT_SOFT = "#E8FFF8"
+WHITE = "#FFFFFF"
+BG = "#F3FBFF"
+SURFACE = "#FFFFFF"
+INK = "#0B3A66"
+MUTED = "#5A7A96"
+LINE = "#D4E8F5"
+FIELD = "#F0FAFF"
+ACCENT = BLUE
+ACCENT_HOVER = "#0C5A9C"
+RAIL = "#106EBE"
+RAIL_MUTED = "#D5ECFA"
+DANGER = "#D64545"
+OK = "#0AAF8A"
+BUSY = MINT
+CREAM = WHITE
+DISABLED = "#B7D4EA"
+DISABLED_TEXT = "#7FA3BF"
 
 
 def _enable_sharp_text() -> None:
@@ -43,17 +54,48 @@ def _enable_sharp_text() -> None:
         return
 
 
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    raw = value.lstrip("#")
+    return int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+
+
+def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+def _mix(start: str, end: str, amount: float) -> str:
+    left = _hex_to_rgb(start)
+    right = _hex_to_rgb(end)
+    return _rgb_to_hex(tuple(int(a + (b - a) * amount) for a, b in zip(left, right)))
+
+
 class SorterApp:
     def __init__(self) -> None:
         _enable_sharp_text()
         ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("dark-blue")
+        ctk.set_default_color_theme("blue")
         self.root = ctk.CTk()
         self.root.title("Event photos")
         self.root.minsize(860, 560)
         self.root.configure(fg_color=BG)
+        self._set_window_icon()
         self.messages: queue.Queue[tuple[str, str]] = queue.Queue()
         self._running = False
+        self._pulse_job: str | None = None
+        self._pulse_on = False
+        self._anim_jobs: dict[int, str] = {}
+        self._icons = {
+            "camera": ctk_icon("camera", WHITE, 22),
+            "folder": ctk_icon("folder", BLUE, 16),
+            "folder-out": ctk_icon("folder-out", BLUE, 16),
+            "sort": ctk_icon("sort", WHITE, 16),
+            "sort-off": ctk_icon("sort", DISABLED_TEXT, 16),
+            "open": ctk_icon("open", BLUE, 16),
+            "save": ctk_icon("save", WHITE, 16),
+            "save-off": ctk_icon("save", DISABLED_TEXT, 16),
+            "back": ctk_icon("back", BLUE, 14),
+            "photos": ctk_icon("photos", MINT, 20),
+        }
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
@@ -65,14 +107,35 @@ class SorterApp:
         self.settings = self._load_group_settings()
         self._selected = ""
         self._group_buttons: dict[str, ctk.CTkButton] = {}
+        self._group_icon_images: dict[str, ctk.CTkImage] = {}
         self._build()
         self._place_on_screen()
         self._refresh_buttons()
         self._set_status_tone("idle")
 
+    def _set_window_icon(self) -> None:
+        try:
+            if not APP_ICON.exists():
+                write_app_icon(APP_ICON)
+        except Exception:
+            return
+
+        def apply() -> None:
+            try:
+                self.root.iconbitmap(str(APP_ICON))
+            except Exception:
+                return
+
+        # CustomTkinter installs its own icon shortly after start, so set ours afterward.
+        apply()
+        self.root.after(300, apply)
+
     def _build(self) -> None:
         outer = ctk.CTkFrame(self.root, fg_color=BG, corner_radius=0)
         outer.pack(fill="both", expand=True)
+
+        accent = ctk.CTkFrame(outer, fg_color=MINT, corner_radius=0, width=5)
+        accent.pack(side="left", fill="y")
 
         rail = ctk.CTkFrame(outer, fg_color=RAIL, corner_radius=0, width=248)
         rail.pack(side="left", fill="y")
@@ -83,6 +146,7 @@ class SorterApp:
         main.pack(side="left", fill="both", expand=True, padx=28, pady=24)
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(0, weight=1)
+        self._main = main
 
         self.sort_view = ctk.CTkFrame(main, fg_color=BG, corner_radius=0)
         self.sort_view.grid(row=0, column=0, sticky="nsew")
@@ -92,13 +156,16 @@ class SorterApp:
         self._build_sort_view()
 
     def _build_sort_view(self) -> None:
+        heading = ctk.CTkFrame(self.sort_view, fg_color=BG, corner_radius=0)
+        heading.grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(heading, image=self._icons["photos"], text="", width=28).pack(side="left", padx=(0, 8))
         ctk.CTkLabel(
-            self.sort_view,
+            heading,
             text="Sort a folder",
             text_color=INK,
             font=("Segoe UI", 26),
             anchor="w",
-        ).grid(row=0, column=0, sticky="ew")
+        ).pack(side="left")
         ctk.CTkLabel(
             self.sort_view,
             text="Copies go into named groups. Choose a group on the left to see how it is defined.",
@@ -110,19 +177,20 @@ class SorterApp:
         ).grid(row=1, column=0, sticky="ew", pady=(4, 16))
 
         self.input_entry, self.input_button = self._field_row(
-            self.sort_view, 2, "Mixed photos", "Folder with every shot from the event", self.input_var, self._pick_input
+            self.sort_view, 2, "Mixed photos", "Folder with every shot from the event", self.input_var, self._pick_input, "folder"
         )
         self.output_entry, self.output_button = self._field_row(
-            self.sort_view, 3, "Save groups to", "A different folder for Stage, Guests, and the rest", self.output_var, self._pick_output
+            self.sort_view, 3, "Save groups to", "A different folder for Stage, Guests, and the rest", self.output_var, self._pick_output, "folder-out"
         )
 
         self.keep_check = ctk.CTkCheckBox(
             self.sort_view,
             text="Keep photos already sorted in the output folder",
             variable=self.keep_var,
-            fg_color=ACCENT,
-            hover_color=ACCENT_HOVER,
+            fg_color=BLUE,
+            hover_color=MINT,
             border_color=LINE,
+            checkmark_color=WHITE,
             text_color=INK,
             font=("Segoe UI", 13),
             corner_radius=6,
@@ -138,22 +206,22 @@ class SorterApp:
 
         actions = ctk.CTkFrame(self.sort_view, fg_color=BG, corner_radius=0)
         actions.grid(row=6, column=0, sticky="w", pady=(0, 16))
-        self.sort_button = self._button(actions, "Sort photos", self._start, primary=True)
+        self.sort_button = self._button(actions, "Sort photos", self._start, primary=True, icon="sort")
         self.sort_button.pack(side="left")
-        self.open_button = self._button(actions, "Open folder", self._open_output, primary=False)
+        self.open_button = self._button(actions, "Open folder", self._open_output, primary=False, icon="open")
         self.open_button.pack(side="left", padx=(10, 0))
 
         panel = ctk.CTkFrame(self.sort_view, fg_color=SURFACE, corner_radius=16, border_width=1, border_color=LINE)
         panel.grid(row=7, column=0, sticky="nsew")
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(1, weight=1)
-        heading = ctk.CTkFrame(panel, fg_color=SURFACE, corner_radius=0)
-        heading.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 8))
-        self.status_dot = ctk.CTkFrame(heading, width=10, height=10, corner_radius=5, fg_color=MUTED)
+        status_row = ctk.CTkFrame(panel, fg_color=SURFACE, corner_radius=0)
+        status_row.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 8))
+        self.status_dot = ctk.CTkFrame(status_row, width=10, height=10, corner_radius=5, fg_color=MUTED)
         self.status_dot.pack(side="left", padx=(2, 8))
         self.status_dot.pack_propagate(False)
         ctk.CTkLabel(
-            heading,
+            status_row,
             textvariable=self.status_var,
             text_color=INK,
             font=("Segoe UI", 13),
@@ -171,19 +239,24 @@ class SorterApp:
             border_width=0,
             wrap="word",
             activate_scrollbars=True,
-            scrollbar_button_color="#DDD8CE",
-            scrollbar_button_hover_color="#C9C3B8",
+            scrollbar_button_color="#C5E4F4",
+            scrollbar_button_hover_color=BLUE,
         )
         self.log.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.log.configure(state="disabled")
 
     def _build_rail(self, rail: ctk.CTkFrame) -> None:
-        ctk.CTkLabel(rail, text="EVENT", text_color=ACCENT, font=("Segoe UI", 11, "bold"), anchor="w").pack(
-            anchor="w", padx=22, pady=(26, 0)
-        )
-        title = ctk.CTkLabel(rail, text="Photos", text_color=CREAM, font=("Segoe UI", 28), anchor="w", cursor="hand2")
-        title.pack(anchor="w", padx=22, pady=(2, 6))
+        brand = ctk.CTkFrame(rail, fg_color=RAIL, corner_radius=0)
+        brand.pack(fill="x", padx=18, pady=(22, 0))
+        ctk.CTkLabel(brand, image=self._icons["camera"], text="").pack(side="left", padx=(0, 8), pady=(4, 0))
+        titles = ctk.CTkFrame(brand, fg_color=RAIL, corner_radius=0)
+        titles.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(titles, text="EVENT", text_color=MINT, font=("Segoe UI", 11, "bold"), anchor="w").pack(anchor="w")
+        title = ctk.CTkLabel(titles, text="Photos", text_color=WHITE, font=("Segoe UI", 26), anchor="w", cursor="hand2")
+        title.pack(anchor="w")
         title.bind("<Button-1>", lambda _event: self._show_sort())
+        title.bind("<Enter>", lambda _event: title.configure(text_color=MINT))
+        title.bind("<Leave>", lambda _event: title.configure(text_color=WHITE))
         ctk.CTkLabel(
             rail,
             text="Group mixed event photos on this computer.",
@@ -192,27 +265,34 @@ class SorterApp:
             anchor="w",
             justify="left",
             wraplength=190,
-        ).pack(anchor="w", padx=22)
-        ctk.CTkFrame(rail, fg_color="#2C2A26", height=1, corner_radius=0).pack(fill="x", padx=22, pady=16)
-        ctk.CTkLabel(rail, text="GROUPS", text_color="#8A847A", font=("Segoe UI", 11, "bold"), anchor="w").pack(
+        ).pack(anchor="w", padx=22, pady=(8, 0))
+        ctk.CTkFrame(rail, fg_color="#4B9AD8", height=1, corner_radius=0).pack(fill="x", padx=22, pady=16)
+        ctk.CTkLabel(rail, text="GROUPS", text_color="#BFE3F7", font=("Segoe UI", 11, "bold"), anchor="w").pack(
             anchor="w", padx=22, pady=(0, 8)
         )
         groups = ctk.CTkFrame(rail, fg_color=RAIL, corner_radius=0)
         groups.pack(fill="both", expand=True, padx=10, pady=(0, 16))
         for name in self._group_names():
+            glyph = GROUP_ICONS.get(name, "photos")
+            image = ctk_icon(glyph, WHITE, 15)
+            self._group_icon_images[name] = image
             button = ctk.CTkButton(
                 groups,
-                text=name,
+                text=f"  {name}",
+                image=image,
+                compound="left",
                 anchor="w",
                 height=36,
                 corner_radius=10,
                 fg_color=RAIL,
-                hover_color="#24221F",
-                text_color="#E7E1D6",
+                hover_color="#0D5CA0",
+                text_color=WHITE,
                 font=("Segoe UI", 14),
+                hover=False,
                 command=lambda group=name: self._show_group(group),
             )
             button.pack(fill="x", pady=2)
+            self._wire_hover(button, rest=RAIL, hover="#0D5CA0", mint_border=False)
             self._group_buttons[name] = button
 
     def _build_group_view(self, parent: ctk.CTkFrame) -> None:
@@ -221,18 +301,23 @@ class SorterApp:
         view.grid_rowconfigure(3, weight=1)
         self.group_view = view
 
-        ctk.CTkButton(
+        self.back_button = ctk.CTkButton(
             view,
-            text="Back to sort",
+            text=" Back to sort",
+            image=self._icons["back"],
+            compound="left",
             command=self._show_sort,
             fg_color="transparent",
-            hover_color="#E7E1D8",
-            text_color=ACCENT,
+            hover_color=MINT_SOFT,
+            text_color=BLUE,
             font=("Segoe UI", 13),
             anchor="w",
             height=32,
             corner_radius=8,
-        ).grid(row=0, column=0, sticky="w")
+            hover=False,
+        )
+        self.back_button.grid(row=0, column=0, sticky="w")
+        self._wire_hover(self.back_button, rest="transparent", hover=MINT_SOFT, mint_border=False, text_rest=BLUE, text_hover=BLUE_DEEP)
 
         self.group_title = ctk.CTkLabel(view, text="", text_color=INK, font=("Segoe UI", 26), anchor="w")
         self.group_title.grid(row=1, column=0, sticky="ew", pady=(10, 4))
@@ -258,10 +343,12 @@ class SorterApp:
             wrap="word",
         )
         self.prompt_box.grid(row=3, column=0, sticky="nsew")
+        self.prompt_box.bind("<FocusIn>", lambda _event: self.prompt_box.configure(border_color=BLUE))
+        self.prompt_box.bind("<FocusOut>", lambda _event: self.prompt_box.configure(border_color=LINE))
 
         foot = ctk.CTkFrame(view, fg_color=BG, corner_radius=0)
         foot.grid(row=4, column=0, sticky="ew", pady=(14, 0))
-        self.save_group = self._button(foot, "Save description", self._save_group, primary=True)
+        self.save_group = self._button(foot, "Save description", self._save_group, primary=True, icon="save")
         self.save_group.pack(side="left")
         self.group_status = ctk.CTkLabel(foot, text="", text_color=MUTED, font=("Segoe UI", 13), anchor="w")
         self.group_status.pack(side="left", padx=(12, 0))
@@ -274,6 +361,7 @@ class SorterApp:
         hint: str,
         variable: tk.StringVar,
         command,
+        icon_name: str,
     ) -> tuple[ctk.CTkEntry, ctk.CTkButton]:
         block = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
         block.grid(row=row, column=0, sticky="ew", pady=(0, 12))
@@ -299,51 +387,161 @@ class SorterApp:
             font=("Segoe UI", 13),
         )
         entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        entry.bind("<FocusIn>", lambda _event, box=entry: box.configure(border_color=BLUE, border_width=2))
+        entry.bind("<FocusOut>", lambda _event, box=entry: box.configure(border_color=LINE, border_width=1))
+        entry.bind("<Enter>", lambda _event, box=entry: box.configure(border_color=MINT) if box.cget("state") != "disabled" else None)
+        entry.bind("<Leave>", lambda _event, box=entry: box.configure(border_color=BLUE if box.focus_get() == box else LINE))
         browse = ctk.CTkButton(
             row_frame,
-            text="Browse",
+            text=" Browse",
+            image=self._icons[icon_name],
+            compound="left",
             command=command,
-            width=96,
+            width=110,
             height=42,
             corner_radius=12,
             fg_color=SURFACE,
-            hover_color="#EAE4DA",
+            hover_color=MINT_SOFT,
             border_width=1,
             border_color=LINE,
-            text_color=INK,
+            text_color=BLUE,
             font=("Segoe UI", 13),
+            hover=False,
         )
         browse.grid(row=0, column=1)
+        self._wire_hover(browse, rest=SURFACE, hover=MINT_SOFT, mint_border=True, text_rest=BLUE, text_hover=BLUE_DEEP)
         return entry, browse
 
-    def _button(self, parent, text: str, command, *, primary: bool) -> ctk.CTkButton:
+    def _button(self, parent, text: str, command, *, primary: bool, icon: str) -> ctk.CTkButton:
         if primary:
-            return ctk.CTkButton(
+            button = ctk.CTkButton(
                 parent,
-                text=text,
+                text=f"  {text}",
+                image=self._icons[icon],
+                compound="left",
                 command=command,
                 height=42,
                 corner_radius=12,
-                fg_color=INK,
-                hover_color="#2E2C28",
-                text_color=CREAM,
-                text_color_disabled="#A39E96",
+                fg_color=BLUE,
+                hover_color=BLUE_HOVER,
+                text_color=WHITE,
+                text_color_disabled=DISABLED_TEXT,
                 font=("Segoe UI", 14, "bold"),
+                hover=False,
             )
-        return ctk.CTkButton(
+            self._wire_hover(button, rest=BLUE, hover=BLUE_HOVER, mint_border=False, text_rest=WHITE, text_hover=WHITE)
+            return button
+        button = ctk.CTkButton(
             parent,
-            text=text,
+            text=f"  {text}",
+            image=self._icons[icon],
+            compound="left",
             command=command,
             height=42,
             corner_radius=12,
             fg_color=SURFACE,
-            hover_color="#EAE4DA",
+            hover_color=MINT_SOFT,
             border_width=1,
             border_color=LINE,
-            text_color=INK,
-            text_color_disabled="#B0A89E",
+            text_color=BLUE,
+            text_color_disabled=DISABLED_TEXT,
             font=("Segoe UI", 14),
+            hover=False,
         )
+        self._wire_hover(button, rest=SURFACE, hover=MINT_SOFT, mint_border=True, text_rest=BLUE, text_hover=BLUE_DEEP)
+        return button
+
+    def _wire_hover(
+        self,
+        widget: ctk.CTkButton,
+        *,
+        rest: str,
+        hover: str,
+        mint_border: bool,
+        text_rest: str | None = None,
+        text_hover: str | None = None,
+    ) -> None:
+        widget._rest_color = rest  # noqa: SLF001 - small hover state for animation
+        widget._hover_color_to = hover
+
+        def enter(_event=None) -> None:
+            if str(widget.cget("state")) == "disabled":
+                return
+            if self._is_selected_group(widget):
+                return
+            self._animate_widget(widget, rest, hover, border=MINT if mint_border else None, text=text_hover)
+
+        def leave(_event=None) -> None:
+            if self._is_selected_group(widget):
+                return
+            idle_border = LINE if mint_border and rest == SURFACE else None
+            self._animate_widget(widget, hover, rest, border=idle_border, text=text_rest)
+
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
+
+    def _is_selected_group(self, widget: ctk.CTkButton) -> bool:
+        if not self._selected:
+            return False
+        return self._group_buttons.get(self._selected) is widget
+
+    def _animate_widget(
+        self,
+        widget: ctk.CTkButton,
+        start: str,
+        end: str,
+        *,
+        border: str | None = None,
+        text: str | None = None,
+        steps: int = 7,
+    ) -> None:
+        key = id(widget)
+        previous = self._anim_jobs.pop(key, None)
+        if previous is not None:
+            self.root.after_cancel(previous)
+
+        if start in {"transparent", "None"} or end in {"transparent", "None"}:
+            widget.configure(fg_color=end)
+            if border:
+                widget.configure(border_color=border)
+            if text:
+                widget.configure(text_color=text)
+            return
+
+        def tick(step: int) -> None:
+            amount = step / steps
+            widget.configure(fg_color=_mix(start, end, amount))
+            if step >= steps:
+                self._anim_jobs.pop(key, None)
+                if border:
+                    widget.configure(border_color=border)
+                if text:
+                    widget.configure(text_color=text)
+                return
+            self._anim_jobs[key] = self.root.after(16, lambda: tick(step + 1))
+
+        if border:
+            widget.configure(border_color=border)
+        if text:
+            widget.configure(text_color=text)
+        tick(1)
+
+    def _flash_view(self) -> None:
+        frames = (MINT_SOFT, "#F0FCFF", BG)
+
+        def tick(index: int = 0) -> None:
+            if index >= len(frames):
+                self._main.configure(fg_color=BG)
+                self.sort_view.configure(fg_color=BG)
+                self.group_view.configure(fg_color=BG)
+                return
+            color = frames[index]
+            self._main.configure(fg_color=color)
+            self.sort_view.configure(fg_color=color)
+            self.group_view.configure(fg_color=color)
+            self.root.after(45, lambda: tick(index + 1))
+
+        tick()
 
     def _place_on_screen(self) -> None:
         self.root.update_idletasks()
@@ -354,7 +552,6 @@ class SorterApp:
         self.root.geometry(f"{width}x{height}")
         self.root.update_idletasks()
         outer_w, outer_h = self._outer_size()
-        extra_w = max(0, outer_w - int(width * scale))
         extra_h = max(0, outer_h - int(height * scale))
         if extra_h:
             height = max(520, int((work_h - extra_h - 12) / scale))
@@ -428,28 +625,62 @@ class SorterApp:
 
     def _enable(self, button: ctk.CTkButton, enabled: bool) -> None:
         button.configure(state="normal" if enabled else "disabled")
-        if button is getattr(self, "sort_button", None) or button is getattr(self, "save_group", None):
+        if button is getattr(self, "sort_button", None):
             if enabled:
-                button.configure(fg_color=INK, text_color=CREAM)
+                button.configure(fg_color=BLUE, text_color=WHITE, image=self._icons["sort"])
             else:
-                button.configure(fg_color="#D9D3C8", text_color="#A39E96")
+                button.configure(fg_color=DISABLED, text_color=DISABLED_TEXT, image=self._icons["sort-off"], border_color=DISABLED)
+            return
+        if button is getattr(self, "save_group", None):
+            if enabled:
+                button.configure(fg_color=BLUE, text_color=WHITE, image=self._icons["save"])
+            else:
+                button.configure(fg_color=DISABLED, text_color=DISABLED_TEXT, image=self._icons["save-off"], border_color=DISABLED)
 
     def _set_status_tone(self, tone: str) -> None:
-        color = {"idle": "#A39E96", "busy": BUSY, "done": OK, "error": DANGER}.get(tone, MUTED)
+        self._stop_pulse()
+        color = {"idle": "#8FB8D4", "busy": MINT, "done": OK, "error": DANGER}.get(tone, MUTED)
         self.status_dot.configure(fg_color=color)
+        if tone == "busy":
+            self._pulse_on = True
+            self._pulse()
+
+    def _pulse(self) -> None:
+        if not self._running:
+            return
+        self._pulse_on = not self._pulse_on
+        self.status_dot.configure(fg_color=MINT if self._pulse_on else BLUE)
+        grow = 12 if self._pulse_on else 10
+        self.status_dot.configure(width=grow, height=grow, corner_radius=grow // 2)
+        self._pulse_job = self.root.after(380, self._pulse)
+
+    def _stop_pulse(self) -> None:
+        if self._pulse_job is not None:
+            self.root.after_cancel(self._pulse_job)
+            self._pulse_job = None
+        self.status_dot.configure(width=10, height=10, corner_radius=5)
 
     def _paint_groups(self) -> None:
         for name, button in self._group_buttons.items():
             if name == self._selected:
-                button.configure(fg_color="#2C2925", text_color="#F3E6D4", hover_color="#2C2925")
+                button.configure(fg_color=MINT, text_color=BLUE_DEEP, hover_color=MINT)
+                glyph = GROUP_ICONS.get(name, "photos")
+                image = ctk_icon(glyph, BLUE_DEEP, 15)
+                self._group_icon_images[name] = image
+                button.configure(image=image)
             else:
-                button.configure(fg_color=RAIL, text_color="#E7E1D6", hover_color="#24221F")
+                button.configure(fg_color=RAIL, text_color=WHITE, hover_color="#0D5CA0")
+                glyph = GROUP_ICONS.get(name, "photos")
+                image = ctk_icon(glyph, WHITE, 15)
+                self._group_icon_images[name] = image
+                button.configure(image=image)
 
     def _show_sort(self) -> None:
         self._selected = ""
         self._paint_groups()
         self.group_view.grid_remove()
         self.sort_view.grid(row=0, column=0, sticky="nsew")
+        self._flash_view()
 
     def _show_group(self, name: str) -> None:
         self._selected = name
@@ -458,6 +689,7 @@ class SorterApp:
         self.group_view.grid(row=0, column=0, sticky="nsew")
         self.group_title.configure(text=name)
         self.group_status.configure(text="")
+        self._flash_view()
         review = name == self.settings.review_label
         category = next((item for item in self.settings.categories if item.name == name), None)
         self.prompt_box.configure(state="normal")
@@ -512,7 +744,7 @@ class SorterApp:
 
         self._clear_log()
         self._set_busy(True)
-        self.status_var.set("Starting…")
+        self.status_var.set("Startingâ€¦")
         self._append("Starting sort")
         worker = threading.Thread(target=self._sort, args=(input_dir, output_dir), daemon=True)
         worker.start()
