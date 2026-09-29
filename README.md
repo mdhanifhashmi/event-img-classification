@@ -39,6 +39,14 @@ Libraries:
 
 ## Sort a folder
 
+Open the small window, browse to the mixed photo folder, browse to an output folder, then click **Sort photos**:
+
+```powershell
+python -m src.gui
+```
+
+The same sort can be started from the command line:
+
 ```powershell
 python -m src.cli --input D:\Events\Wedding\all --output D:\Events\Wedding\sorted
 ```

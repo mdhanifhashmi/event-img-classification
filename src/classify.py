@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -122,6 +123,7 @@ def collect_embeddings(
     paths: list[Path],
     cache: EmbeddingCache | None,
     batch_size: int,
+    on_status: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, np.ndarray], list[tuple[Path, str]], list[str], list[int], list[int], np.ndarray]:
     """Embed paths, reusing cache rows whose path, mtime, and size still match.
 
@@ -129,6 +131,11 @@ def collect_embeddings(
     arrays to write back to the cache (every successfully read photo).
     """
     from tqdm import tqdm
+
+    def report(message: str) -> None:
+        print(message)
+        if on_status is not None:
+            on_status(message)
 
     vectors: dict[str, np.ndarray] = {}
     failures: list[tuple[Path, str]] = []
@@ -144,10 +151,11 @@ def collect_embeddings(
 
     reused = len(paths) - len(pending)
     if reused:
-        print(f"Reusing {reused} cached embedding{'s' if reused != 1 else ''}.")
+        report(f"Reusing {reused} cached embedding{'s' if reused != 1 else ''}.")
 
     if pending:
         steps = range(0, len(pending), batch_size)
+        report(f"Embedding {len(pending)} photo{'s' if len(pending) != 1 else ''}...")
         for start in tqdm(steps, desc="Embedding photos", unit="batch"):
             chunk = pending[start : start + batch_size]
             loaded: list[tuple[Path, Image.Image]] = []
@@ -156,25 +164,26 @@ def collect_embeddings(
                     loaded.append((path, load_rgb(path)))
                 except Exception as exc:
                     failures.append((path, str(exc)))
-            if not loaded:
-                continue
-            try:
-                matrix = embed_image_batch(backend, [image for _, image in loaded])
-            except Exception:
-                matrix = None
-            if matrix is not None and len(matrix) == len(loaded):
-                for (path, _), row in zip(loaded, matrix, strict=True):
-                    key, _, _ = file_signature(path)
-                    vectors[key] = row
-                continue
-            for path, image in loaded:
+            if loaded:
                 try:
-                    row = embed_image_batch(backend, [image])[0]
-                except Exception as exc:
-                    failures.append((path, str(exc)))
-                    continue
-                key, _, _ = file_signature(path)
-                vectors[key] = row
+                    matrix = embed_image_batch(backend, [image for _, image in loaded])
+                except Exception:
+                    matrix = None
+                if matrix is not None and len(matrix) == len(loaded):
+                    for (path, _), row in zip(loaded, matrix, strict=True):
+                        key, _, _ = file_signature(path)
+                        vectors[key] = row
+                else:
+                    for path, image in loaded:
+                        try:
+                            row = embed_image_batch(backend, [image])[0]
+                        except Exception as exc:
+                            failures.append((path, str(exc)))
+                            continue
+                        key, _, _ = file_signature(path)
+                        vectors[key] = row
+            done = min(start + batch_size, len(pending))
+            report(f"Embedded {done} of {len(pending)}")
 
     cache_paths: list[str] = []
     cache_mtimes: list[int] = []

@@ -77,19 +77,20 @@ def run(args: argparse.Namespace) -> int:
     if not photos:
         raise ValueError(f"No images found in {input_dir}")
 
-    print(f"Found {len(photos)} image{'s' if len(photos) != 1 else ''} in {input_dir}")
+    _notify(args, f"Found {len(photos)} image{'s' if len(photos) != 1 else ''} in {input_dir}")
     device = pick_device(args.device)
-    print(f"Loading {model_id} on {device} (first run downloads the model)...")
+    _notify(args, f"Loading {model_id} on {device} (first run downloads the model)...")
     backend = load_backend(model_id, device)
     cache = load_cache(output_dir)
     if cache is not None and cache.model != model_id:
-        print(f"Cached embeddings are for {cache.model}, so photos will be embedded again.")
+        _notify(args, f"Cached embeddings are for {cache.model}, so photos will be embedded again.")
         cache = None
     vectors, failures, cache_paths, cache_mtimes, cache_sizes, matrix = collect_embeddings(
         backend,
         photos,
         cache,
         args.batch_size,
+        on_status=getattr(args, "on_status", None),
     )
     if len(matrix):
         save_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
@@ -100,7 +101,7 @@ def run(args: argparse.Namespace) -> int:
     for path in photos:
         failure = failure_by_path.get(path, "")
         if failure:
-            print(f"Skipped unreadable file: {path} ({failure})", file=sys.stderr)
+            _notify(args, f"Skipped unreadable file: {path.name}")
             records.append(
                 PhotoRecord(
                     source=path,
@@ -118,12 +119,13 @@ def run(args: argparse.Namespace) -> int:
         primary, others = assign_labels(scores, min_score, settings.review_label)
         records.append(PhotoRecord(source=path, primary=primary, others=others, scores=scores))
 
+    _notify(args, "Copying photos into group folders...")
     manifest = export_records(records, input_dir, output_dir, [*folder_names, "Unreadable"])
     LAST_RUN.write_text(
         json.dumps({"output": str(output_dir), "min_score": min_score, "model": model_id}),
         encoding="utf-8",
     )
-    _print_summary(records, output_dir, manifest, min_score)
+    _print_summary(records, output_dir, manifest, min_score, args)
     return 0
 
 
@@ -135,18 +137,31 @@ def _is_inside(path: Path, parent: Path) -> bool:
     return True
 
 
-def _print_summary(records: list[PhotoRecord], output_dir: Path, manifest: Path, min_score: float) -> None:
+def _notify(args: argparse.Namespace, message: str) -> None:
+    print(message)
+    callback = getattr(args, "on_status", None)
+    if callback is not None:
+        callback(message)
+
+
+def _print_summary(
+    records: list[PhotoRecord],
+    output_dir: Path,
+    manifest: Path,
+    min_score: float,
+    args: argparse.Namespace,
+) -> None:
     counts: Counter[str] = Counter()
     for record in records:
         counts[record.primary] += 1
         for label in record.others:
             counts[label] += 1
-    print(f"Threshold: {min_score:.2f}")
-    print(f"Manifest: {manifest}")
+    _notify(args, f"Threshold: {min_score:.2f}")
+    _notify(args, f"Manifest: {manifest}")
     for label, count in counts.most_common():
-        print(f"  {label}: {count}")
-    print(f"Grouped copies are in {output_dir}")
-    print("Originals were left in place.")
+        _notify(args, f"  {label}: {count}")
+    _notify(args, f"Grouped copies are in {output_dir}")
+    _notify(args, "Originals were left in place.")
 
 
 if __name__ == "__main__":
