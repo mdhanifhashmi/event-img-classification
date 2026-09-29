@@ -94,6 +94,41 @@ def save_cache(
     temporary_index.replace(folder / INDEX_NAME)
 
 
+def merge_cache(
+    output_dir: Path,
+    model: str,
+    paths: list[str],
+    mtimes_ns: list[int],
+    sizes: list[int],
+    embeddings: np.ndarray,
+) -> None:
+    """Add these embeddings to the cache, leaving vectors from earlier inputs in place."""
+    rows: dict[str, tuple[int, int, np.ndarray]] = {}
+    current = load_cache(output_dir)
+    if current is not None and current.model == model:
+        for path, mtime, size, vector in zip(
+            current.paths,
+            current.mtimes_ns,
+            current.sizes,
+            current.embeddings,
+            strict=True,
+        ):
+            rows[path] = (mtime, size, np.array(vector, dtype=np.float32, copy=True))
+    for path, mtime, size, vector in zip(paths, mtimes_ns, sizes, embeddings, strict=True):
+        rows[path] = (int(mtime), int(size), np.asarray(vector, dtype=np.float32))
+    if not rows:
+        return
+    ordered = list(rows.items())
+    save_cache(
+        output_dir,
+        model,
+        [path for path, _item in ordered],
+        [item[0] for _path, item in ordered],
+        [item[1] for _path, item in ordered],
+        np.stack([item[2] for _path, item in ordered]),
+    )
+
+
 def file_signature(path: Path) -> tuple[str, int, int]:
     stat = path.stat()
     return str(path.resolve()), stat.st_mtime_ns, stat.st_size

@@ -145,7 +145,7 @@ class SorterApp:
         self.sort_view = tk.Frame(main, bg=BG)
         self.sort_view.grid(row=0, column=0, sticky="nsew")
         self.sort_view.columnconfigure(0, weight=1)
-        self.sort_view.rowconfigure(5, weight=1)
+        self.sort_view.rowconfigure(7, weight=1)
         self._build_group_view(main)
 
         tk.Label(self.sort_view, text="Sort a folder", bg=BG, fg=INK, font=("Segoe UI", 22), anchor="w").grid(
@@ -169,15 +169,40 @@ class SorterApp:
             self.sort_view, 3, "Save groups to", "A different folder for Stage, Guests, and the rest", self.output_var, self._pick_output
         )
 
+        self.keep_var = tk.BooleanVar(value=False)
+        self.keep_check = tk.Checkbutton(
+            self.sort_view,
+            text="Keep photos already sorted in the output folder",
+            variable=self.keep_var,
+            bg=BG,
+            fg=INK,
+            activebackground=BG,
+            activeforeground=INK,
+            selectcolor=SURFACE,
+            font=("Segoe UI", 10),
+            anchor="w",
+            highlightthickness=0,
+            bd=0,
+        )
+        self.keep_check.grid(row=4, column=0, sticky="w", pady=(2, 0))
+        tk.Label(
+            self.sort_view,
+            text="Adds this input to the groups. Leave this off to replace those groups.",
+            bg=BG,
+            fg=MUTED,
+            font=("Segoe UI", 9),
+            anchor="w",
+        ).grid(row=5, column=0, sticky="w", pady=(0, 10))
+
         actions = tk.Frame(self.sort_view, bg=BG)
-        actions.grid(row=4, column=0, sticky="nw", pady=(8, 16))
+        actions.grid(row=6, column=0, sticky="nw", pady=(0, 16))
         self.sort_button = ActionButton(actions, "Sort photos", self._start, primary=True)
         self.sort_button.pack(side="left")
         self.open_button = ActionButton(actions, "Open folder", self._open_output, primary=False)
         self.open_button.pack(side="left", padx=(10, 0))
 
         panel = tk.Frame(self.sort_view, bg=SURFACE, highlightbackground=LINE, highlightthickness=1)
-        panel.grid(row=5, column=0, sticky="nsew")
+        panel.grid(row=7, column=0, sticky="nsew")
         inner = tk.Frame(panel, bg=SURFACE, padx=14, pady=12)
         inner.pack(fill="both", expand=True)
         inner.columnconfigure(0, weight=1)
@@ -434,7 +459,7 @@ class SorterApp:
 
     def _place_on_screen(self) -> None:
         self.root.update_idletasks()
-        width, height = 900, 640
+        width, height = 900, 700
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
         y = max(0, (self.root.winfo_screenheight() - height) // 2)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
@@ -464,6 +489,7 @@ class SorterApp:
         self.output_entry.configure(state=entry_state)
         self.input_button.set_enabled(not busy)
         self.output_button.set_enabled(not busy)
+        self.keep_check.configure(state="normal" if not busy else "disabled")
         if busy:
             self.sort_button.set_enabled(False)
             self.open_button.set_enabled(False)
@@ -511,6 +537,7 @@ class SorterApp:
             batch_size=4,
             device="auto",
             model=None,
+            keep_existing=bool(self.keep_var.get()),
             on_status=lambda message: self.messages.put(("status", message)),
         )
         try:

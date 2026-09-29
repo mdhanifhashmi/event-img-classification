@@ -10,11 +10,11 @@ from pathlib import Path
 
 try:
     from src.classify import collect_embeddings, embed_texts, load_backend, pick_device
-    from src.export import PhotoRecord, export_records, safe_folder_name
+    from src.export import PhotoRecord, already_sorted_sources, export_records, safe_folder_name
     from src.labels import assign_labels, load_settings
     from src.scan import register_heif, scan_images
     from src.scores import sigmoid_scores
-    from src.store import load_cache, save_cache
+    from src.store import load_cache, merge_cache, save_cache
 except ModuleNotFoundError as exc:
     print(f"Missing library '{exc.name}'. Follow the setup steps in README.md.", file=sys.stderr)
     raise SystemExit(1)
@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=4, help="Photos embedded at once (lower uses less RAM)")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--model", default=None, help="Override the SigLIP model id from the config")
+    parser.add_argument(
+        "--keep-existing",
+        action="store_true",
+        help="Add photos to the output groups instead of replacing those groups",
+    )
     return parser
 
 
@@ -72,10 +77,24 @@ def run(args: argparse.Namespace) -> int:
     if len({name.casefold() for name in folder_names}) != len(folder_names):
         raise ValueError("Two categories would use the same folder name.")
 
+    keep_existing = bool(getattr(args, "keep_existing", False))
     register_heif()
     photos = scan_images(input_dir, exclude=output_dir if _is_inside(output_dir, input_dir) else None)
     if not photos:
         raise ValueError(f"No images found in {input_dir}")
+    if keep_existing:
+        already = already_sorted_sources(output_dir)
+        fresh = [photo for photo in photos if str(photo.resolve()) not in already]
+        kept = len(photos) - len(fresh)
+        if kept:
+            _notify(
+                args,
+                f"Keeping existing groups. {kept} photo{'s' if kept != 1 else ''} already sorted will stay.",
+            )
+        photos = fresh
+        if not photos:
+            _notify(args, "Nothing new to add. The output folder was left as it is.")
+            return 0
 
     _notify(args, f"Found {len(photos)} image{'s' if len(photos) != 1 else ''} in {input_dir}")
     device = pick_device(args.device)
@@ -93,7 +112,10 @@ def run(args: argparse.Namespace) -> int:
         on_status=getattr(args, "on_status", None),
     )
     if len(matrix):
-        save_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
+        if keep_existing:
+            merge_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
+        else:
+            save_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
 
     text_embeds = embed_texts(backend, settings.prompts)
     failure_by_path = {path: message for path, message in failures}
@@ -119,8 +141,17 @@ def run(args: argparse.Namespace) -> int:
         primary, others = assign_labels(scores, min_score, settings.review_label)
         records.append(PhotoRecord(source=path, primary=primary, others=others, scores=scores))
 
-    _notify(args, "Copying photos into group folders...")
-    manifest = export_records(records, input_dir, output_dir, [*folder_names, "Unreadable"])
+    if keep_existing:
+        _notify(args, "Adding photos to the existing groups...")
+    else:
+        _notify(args, "Copying photos into group folders...")
+    manifest = export_records(
+        records,
+        input_dir,
+        output_dir,
+        [*folder_names, "Unreadable"],
+        keep_existing=keep_existing,
+    )
     LAST_RUN.write_text(
         json.dumps({"output": str(output_dir), "min_score": min_score, "model": model_id}),
         encoding="utf-8",

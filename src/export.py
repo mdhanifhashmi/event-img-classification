@@ -49,9 +49,13 @@ def _safe_filename(name: str) -> str:
     return cleaned or "photo"
 
 
-def allocate_filenames(records: list[PhotoRecord], root: Path) -> dict[Path, str]:
+def allocate_filenames(
+    records: list[PhotoRecord],
+    root: Path,
+    reserved: set[str] | None = None,
+) -> dict[Path, str]:
     """Give each source a unique destination filename, case-insensitive."""
-    used: set[str] = set()
+    used: set[str] = set(reserved or ())
     mapping: dict[Path, str] = {}
     for record in records:
         if record.error:
@@ -98,6 +102,30 @@ def reset_group_folders(output_dir: Path, folder_names: list[str]) -> None:
                 ) from exc
 
 
+def names_in_group_folders(output_dir: Path, folder_names: list[str]) -> set[str]:
+    found: set[str] = set()
+    for name in folder_names:
+        folder = output_dir / name
+        if not folder.is_dir():
+            continue
+        for child in folder.iterdir():
+            if child.is_file():
+                found.add(child.name.casefold())
+    return found
+
+
+def already_sorted_sources(output_dir: Path) -> set[str]:
+    manifest = output_dir / MANIFEST_NAME
+    if not manifest.is_file():
+        return set()
+    found: set[str] = set()
+    for row in read_manifest(manifest):
+        source = (row.get("source_path") or "").strip()
+        if source:
+            found.add(str(Path(source).resolve()))
+    return found
+
+
 def read_manifest(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -108,16 +136,30 @@ def export_records(
     input_dir: Path,
     output_dir: Path,
     folder_names: list[str],
+    keep_existing: bool = False,
 ) -> Path:
-    """Replace group folders, copy photos into each matching group, write the manifest."""
+    """Copy photos into group folders and write the manifest.
+
+    With keep_existing, earlier copies stay in the group folders and the new
+    photos are added beside them. Otherwise those group folders are replaced.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
-    reset_group_folders(output_dir, managed_folders(output_dir, folder_names))
-    filenames = allocate_filenames(records, input_dir)
+    folders = managed_folders(output_dir, folder_names)
+    if keep_existing:
+        reserved = names_in_group_folders(output_dir, folders)
+        previous_rows = read_manifest(output_dir / MANIFEST_NAME) if (output_dir / MANIFEST_NAME).is_file() else []
+    else:
+        reset_group_folders(output_dir, folders)
+        reserved = set()
+        previous_rows = []
+    filenames = allocate_filenames(records, input_dir, reserved)
     manifest_path = output_dir / MANIFEST_NAME
 
     with manifest_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_FIELDS)
         writer.writeheader()
+        for row in previous_rows:
+            writer.writerow({field: row.get(field, "") for field in MANIFEST_FIELDS})
         for record in records:
             destinations: list[str] = []
             if not record.error:
