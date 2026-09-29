@@ -36,6 +36,7 @@ Libraries:
 | pyyaml | Category list |
 | tqdm | Progress while embedding |
 | streamlit | Local gallery in the browser |
+| customtkinter | Rounded window for choosing folders and sorting |
 
 ## Sort a folder
 
