@@ -78,6 +78,42 @@ def load_settings(path: Path) -> Settings:
     )
 
 
+def save_category_prompt(path: Path, name: str, prompt: str) -> None:
+    """Replace one group's description and keep the comment header."""
+    prompt = prompt.strip()
+    if not prompt:
+        raise ValueError("The group description cannot be empty.")
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("categories"), list):
+        raise ValueError(f"{path} does not contain a category list.")
+
+    matched = False
+    for entry in raw["categories"]:
+        if isinstance(entry, dict) and str(entry.get("name") or "").strip() == name:
+            entry["prompt"] = prompt
+            matched = True
+            break
+    if not matched:
+        raise ValueError(f"No group named {name!r} in {path}.")
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header: list[str] = []
+    for line in lines:
+        if line.startswith("#") or not line.strip():
+            header.append(line)
+            continue
+        break
+    while header and not header[-1].strip():
+        header.pop()
+
+    dumped = yaml.safe_dump(raw, sort_keys=False, allow_unicode=True, default_flow_style=False)
+    text = ("\n".join(header) + "\n\n" + dumped) if header else dumped
+    if not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text, encoding="utf-8")
+
+
 def assign_labels(
     scores: dict[str, float],
     min_score: float,

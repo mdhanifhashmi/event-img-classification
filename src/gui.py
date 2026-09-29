@@ -121,6 +121,9 @@ class SorterApp:
         self.input_var.trace_add("write", lambda *_: self._refresh_buttons())
         self.output_var.trace_add("write", lambda *_: self._refresh_buttons())
 
+        self.settings = self._load_group_settings()
+        self._selected = ""
+        self._group_rows: dict[str, tuple[tk.Frame, tk.Label]] = {}
         self._build()
         self._place_on_screen()
         self._refresh_buttons()
@@ -138,36 +141,43 @@ class SorterApp:
         main = tk.Frame(outer, bg=BG, padx=28, pady=24)
         main.pack(side="left", fill="both", expand=True)
         main.columnconfigure(0, weight=1)
+        main.rowconfigure(0, weight=1)
+        self.sort_view = tk.Frame(main, bg=BG)
+        self.sort_view.grid(row=0, column=0, sticky="nsew")
+        self.sort_view.columnconfigure(0, weight=1)
+        self.sort_view.rowconfigure(5, weight=1)
+        self._build_group_view(main)
 
-        tk.Label(main, text="Sort a folder", bg=BG, fg=INK, font=("Segoe UI", 22), anchor="w").grid(
+        tk.Label(self.sort_view, text="Sort a folder", bg=BG, fg=INK, font=("Segoe UI", 22), anchor="w").grid(
             row=0, column=0, sticky="ew"
         )
         tk.Label(
-            main,
-            text="Copies go into named groups. The original folder is left untouched.",
+            self.sort_view,
+            text="Copies go into named groups. Choose a group on the left to see how it is defined.",
             bg=BG,
             fg=MUTED,
             font=("Segoe UI", 10),
             anchor="w",
+            justify="left",
+            wraplength=520,
         ).grid(row=1, column=0, sticky="ew", pady=(4, 18))
 
         self.input_entry, self.input_button = self._field_row(
-            main, 2, "Mixed photos", "Folder with every shot from the event", self.input_var, self._pick_input
+            self.sort_view, 2, "Mixed photos", "Folder with every shot from the event", self.input_var, self._pick_input
         )
         self.output_entry, self.output_button = self._field_row(
-            main, 3, "Save groups to", "A different folder for Stage, Guests, and the rest", self.output_var, self._pick_output
+            self.sort_view, 3, "Save groups to", "A different folder for Stage, Guests, and the rest", self.output_var, self._pick_output
         )
 
-        actions = tk.Frame(main, bg=BG)
+        actions = tk.Frame(self.sort_view, bg=BG)
         actions.grid(row=4, column=0, sticky="nw", pady=(8, 16))
         self.sort_button = ActionButton(actions, "Sort photos", self._start, primary=True)
         self.sort_button.pack(side="left")
         self.open_button = ActionButton(actions, "Open folder", self._open_output, primary=False)
         self.open_button.pack(side="left", padx=(10, 0))
 
-        panel = tk.Frame(main, bg=SURFACE, highlightbackground=LINE, highlightthickness=1)
+        panel = tk.Frame(self.sort_view, bg=SURFACE, highlightbackground=LINE, highlightthickness=1)
         panel.grid(row=5, column=0, sticky="nsew")
-        main.rowconfigure(5, weight=1)
         inner = tk.Frame(panel, bg=SURFACE, padx=14, pady=12)
         inner.pack(fill="both", expand=True)
         inner.columnconfigure(0, weight=1)
@@ -209,9 +219,9 @@ class SorterApp:
         tk.Label(rail, text="EVENT", bg=RAIL, fg=ACCENT, font=("Segoe UI", 8, "bold"), anchor="w").pack(
             anchor="w", padx=24, pady=(22, 0)
         )
-        tk.Label(rail, text="Photos", bg=RAIL, fg="#F6F3EC", font=("Segoe UI", 22), anchor="w").pack(
-            anchor="w", padx=24, pady=(2, 8)
-        )
+        title = tk.Label(rail, text="Photos", bg=RAIL, fg="#F6F3EC", font=("Segoe UI", 22), anchor="w", cursor="hand2")
+        title.pack(anchor="w", padx=24, pady=(2, 8))
+        title.bind("<Button-1>", lambda _event: self._show_sort())
         tk.Label(
             rail,
             text="Group mixed event photos on this computer.",
@@ -225,12 +235,145 @@ class SorterApp:
 
         tk.Frame(rail, bg="#2C2A26", height=1).pack(fill="x", padx=24, pady=16)
         tk.Label(rail, text="GROUPS", bg=RAIL, fg="#8A847A", font=("Segoe UI", 8, "bold"), anchor="w").pack(
-            anchor="w", padx=24, pady=(0, 8)
+            anchor="w", padx=24, pady=(0, 6)
         )
         for name in self._group_names():
-            tk.Label(rail, text=name, bg=RAIL, fg="#E7E1D6", font=("Segoe UI", 10), anchor="w").pack(
-                anchor="w", padx=24, pady=0
+            self._group_row(rail, name)
+
+    def _group_row(self, parent: tk.Frame, name: str) -> None:
+        row = tk.Frame(parent, bg=RAIL, cursor="hand2")
+        row.pack(fill="x")
+        label = tk.Label(
+            row,
+            text=name,
+            bg=RAIL,
+            fg="#E7E1D6",
+            font=("Segoe UI", 10),
+            anchor="w",
+            cursor="hand2",
+            padx=24,
+            pady=3,
+        )
+        label.pack(fill="x")
+        for widget in (row, label):
+            widget.bind("<Button-1>", lambda _event, group=name: self._show_group(group))
+            widget.bind("<Enter>", lambda _event, group=name: self._hover_group(group, True))
+            widget.bind("<Leave>", lambda _event, group=name: self._hover_group(group, False))
+        self._group_rows[name] = (row, label)
+
+    def _hover_group(self, name: str, inside: bool) -> None:
+        if name == self._selected:
+            return
+        row, label = self._group_rows[name]
+        color = "#24221F" if inside else RAIL
+        row.configure(bg=color)
+        label.configure(bg=color)
+
+    def _paint_groups(self) -> None:
+        for name, (row, label) in self._group_rows.items():
+            selected = name == self._selected
+            color = "#2C2925" if selected else RAIL
+            ink = "#F3E6D4" if selected else "#E7E1D6"
+            row.configure(bg=color)
+            label.configure(bg=color, fg=ink)
+
+    def _load_group_settings(self):
+        from src.labels import load_settings
+
+        return load_settings(DEFAULT_CONFIG)
+
+    def _build_group_view(self, parent: tk.Frame) -> None:
+        view = tk.Frame(parent, bg=BG)
+        view.columnconfigure(0, weight=1)
+        view.rowconfigure(3, weight=1)
+        self.group_view = view
+
+        back = tk.Label(view, text="Back to sort", bg=BG, fg=ACCENT, font=("Segoe UI", 9), cursor="hand2", anchor="w")
+        back.grid(row=0, column=0, sticky="w")
+        back.bind("<Button-1>", lambda _event: self._show_sort())
+
+        self.group_title = tk.Label(view, text="", bg=BG, fg=INK, font=("Segoe UI", 22), anchor="w")
+        self.group_title.grid(row=1, column=0, sticky="ew", pady=(8, 4))
+        self.group_hint = tk.Label(
+            view,
+            text="",
+            bg=BG,
+            fg=MUTED,
+            font=("Segoe UI", 10),
+            anchor="w",
+            justify="left",
+            wraplength=520,
+        )
+        self.group_hint.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+
+        box = tk.Frame(view, bg=LINE, padx=1, pady=1)
+        box.grid(row=3, column=0, sticky="nsew")
+        self.prompt_box = tk.Text(
+            box,
+            wrap="word",
+            font=("Segoe UI", 11),
+            bg=SURFACE,
+            fg=INK,
+            insertbackground=INK,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=12,
+            pady=10,
+            height=6,
+        )
+        self.prompt_box.pack(fill="both", expand=True)
+
+        foot = tk.Frame(view, bg=BG)
+        foot.grid(row=4, column=0, sticky="ew", pady=(14, 0))
+        self.save_group = ActionButton(foot, "Save description", self._save_group, primary=True)
+        self.save_group.pack(side="left")
+        self.group_status = tk.Label(foot, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9), anchor="w")
+        self.group_status.pack(side="left", padx=(12, 0))
+
+    def _show_sort(self) -> None:
+        self._selected = ""
+        self._paint_groups()
+        self.group_view.grid_remove()
+        self.sort_view.grid(row=0, column=0, sticky="nsew")
+
+    def _show_group(self, name: str) -> None:
+        self._selected = name
+        self._paint_groups()
+        self.sort_view.grid_remove()
+        self.group_view.grid(row=0, column=0, sticky="nsew")
+        self.group_title.configure(text=name)
+        self.group_status.configure(text="")
+        review = name == self.settings.review_label
+        category = next((item for item in self.settings.categories if item.name == name), None)
+        self.prompt_box.configure(state="normal")
+        self.prompt_box.delete("1.0", "end")
+        if review or category is None:
+            self.group_hint.configure(
+                text="Photos land here when none of the groups above score high enough. This folder has no description of its own."
             )
+            self.prompt_box.insert("1.0", "Assigned automatically during sorting.")
+            self.prompt_box.configure(state="disabled")
+            self.save_group.set_enabled(False)
+            return
+        self.group_hint.configure(
+            text="Each photo is compared with this sentence. Save it, then sort again to use the new wording."
+        )
+        self.prompt_box.insert("1.0", category.prompt)
+        self.save_group.set_enabled(True)
+
+    def _save_group(self) -> None:
+        name = self._selected
+        prompt = self.prompt_box.get("1.0", "end").strip()
+        try:
+            from src.labels import save_category_prompt
+
+            save_category_prompt(DEFAULT_CONFIG, name, prompt)
+            self.settings = self._load_group_settings()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Event photos", str(exc))
+            return
+        self.group_status.configure(text="Saved. Sort again to apply it.")
 
     def _group_names(self) -> list[str]:
         try:
