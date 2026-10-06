@@ -122,6 +122,7 @@ class SorterApp:
         self.output_var.trace_add("write", lambda *_: self._refresh_buttons())
 
         self.settings = self._load_group_settings()
+        self._screen = "sort"
         self._selected = ""
         self._group_buttons: dict[str, ctk.CTkButton] = {}
         self._group_icon_images: dict[str, ctk.CTkImage] = {}
@@ -236,9 +237,16 @@ class SorterApp:
         panel = ctk.CTkFrame(self.sort_view, fg_color=SURFACE, corner_radius=16, border_width=1, border_color=LINE)
         panel.grid(row=7, column=0, sticky="nsew")
         panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(1, weight=1)
+        panel.grid_rowconfigure(2, weight=1)
+        ctk.CTkLabel(
+            panel,
+            text="Activity",
+            text_color=INK,
+            font=("Segoe UI Semibold", 13),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=16, pady=(14, 0))
         status_row = ctk.CTkFrame(panel, fg_color=SURFACE, corner_radius=0)
-        status_row.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 8))
+        status_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(8, 8))
         self.status_dot = ctk.CTkFrame(status_row, width=10, height=10, corner_radius=5, fg_color=MUTED)
         self.status_dot.pack(side="left", padx=(2, 8))
         self.status_dot.pack_propagate(False)
@@ -264,8 +272,8 @@ class SorterApp:
             scrollbar_button_color="#C5E4F4",
             scrollbar_button_hover_color=BLUE,
         )
-        self.log.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self.log.configure(state="disabled")
+        self.log.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self._show_log_hint()
 
     def _build_rail(self, rail: ctk.CTkFrame) -> None:
         brand = ctk.CTkFrame(rail, fg_color=RAIL, corner_radius=0)
@@ -274,11 +282,12 @@ class SorterApp:
         titles = ctk.CTkFrame(brand, fg_color=RAIL, corner_radius=0)
         titles.pack(side="left", fill="x", expand=True)
         ctk.CTkLabel(titles, text="EVENT", text_color=MINT, font=("Segoe UI", 11, "bold"), anchor="w").pack(anchor="w")
-        title = ctk.CTkLabel(titles, text="Photos", text_color=WHITE, font=("Segoe UI", 26), anchor="w", cursor="hand2")
+        title = ctk.CTkLabel(titles, text="Photos", text_color=MINT, font=("Segoe UI Semibold", 26), anchor="w", cursor="hand2")
         title.pack(anchor="w")
+        self.photos_title = title
         title.bind("<Button-1>", lambda _event: self._show_sort())
         title.bind("<Enter>", lambda _event: title.configure(text_color=MINT))
-        title.bind("<Leave>", lambda _event: title.configure(text_color=WHITE))
+        title.bind("<Leave>", lambda _event: self._paint_nav())
         ctk.CTkLabel(
             rail,
             text="Group mixed event photos on this computer.",
@@ -621,11 +630,15 @@ class SorterApp:
         def enter(_event=None) -> None:
             if str(widget.cget("state")) == "disabled":
                 return
+            if widget is getattr(self, "new_group_button", None) and self._screen == "new":
+                return
             if self._is_selected_group(widget):
                 return
             self._animate_widget(widget, rest, hover, border=MINT if mint_border else None, text=text_hover)
 
         def leave(_event=None) -> None:
+            if widget is getattr(self, "new_group_button", None) and self._screen == "new":
+                return
             if self._is_selected_group(widget):
                 return
             idle_border = LINE if mint_border and rest == SURFACE else None
@@ -801,11 +814,27 @@ class SorterApp:
 
     def _enable(self, button: ctk.CTkButton, enabled: bool) -> None:
         button.configure(state="normal" if enabled else "disabled")
-        if button is getattr(self, "pause_button", None) and not enabled:
-            button.configure(image=self._icons["pause-off"])
+        if button is getattr(self, "pause_button", None):
+            if enabled:
+                button.configure(fg_color=SURFACE, text_color=BLUE, border_color=LINE)
+            else:
+                button.configure(
+                    fg_color=DISABLED,
+                    text_color=DISABLED_TEXT,
+                    image=self._icons["pause-off"],
+                    border_color=DISABLED,
+                )
             return
         if button is getattr(self, "stop_button", None):
-            button.configure(image=self._icons["stop" if enabled else "stop-off"])
+            if enabled:
+                button.configure(fg_color=SURFACE, text_color=DANGER, image=self._icons["stop"], border_color=LINE)
+            else:
+                button.configure(
+                    fg_color=DISABLED,
+                    text_color=DISABLED_TEXT,
+                    image=self._icons["stop-off"],
+                    border_color=DISABLED,
+                )
             return
         if button is getattr(self, "sort_button", None):
             if enabled:
@@ -859,15 +888,19 @@ class SorterApp:
 
     def _show_sort(self) -> None:
         self._selected = ""
+        self._screen = "sort"
         self._paint_groups()
+        self._paint_nav()
         self.group_view.grid_remove()
         self.new_view.grid_remove()
         self.sort_view.grid(row=0, column=0, sticky="nsew")
         self._flash_view()
 
     def _show_new_group(self) -> None:
+        self._screen = "new"
         self._selected = ""
         self._paint_groups()
+        self._paint_nav()
         self.sort_view.grid_remove()
         self.group_view.grid_remove()
         self.new_name_var.set("")
@@ -890,9 +923,18 @@ class SorterApp:
         self._show_group(name)
         self.group_status.configure(text="Created. Sort again to use this group.")
 
+    def _paint_nav(self) -> None:
+        self.photos_title.configure(text_color=MINT if self._screen == "sort" else WHITE)
+        if self._screen == "new":
+            self.new_group_button.configure(fg_color=MINT, text_color=BLUE_DEEP, image=self._icons["plus-dark"])
+        else:
+            self.new_group_button.configure(fg_color="#0D5CA0", text_color=WHITE, image=self._icons["plus"])
+
     def _show_group(self, name: str) -> None:
+        self._screen = "group"
         self._selected = name
         self._paint_groups()
+        self._paint_nav()
         self.sort_view.grid_remove()
         self.new_view.grid_remove()
         self.group_view.grid(row=0, column=0, sticky="nsew")
@@ -1166,8 +1208,17 @@ class SorterApp:
             self._kill_process()
         self.root.destroy()
 
+    def _show_log_hint(self) -> None:
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        self.log.insert("1.0", "Progress shows up here once a sort starts.")
+        self.log.configure(state="disabled")
+
     def _append(self, message: str) -> None:
         self.log.configure(state="normal")
+        current = self.log.get("1.0", "end").strip()
+        if current == "Progress shows up here once a sort starts.":
+            self.log.delete("1.0", "end")
         self.log.insert("end", message + "\n")
         self.log.see("end")
         self.log.configure(state="disabled")

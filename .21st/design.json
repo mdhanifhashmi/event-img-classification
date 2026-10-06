@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "project": {
+    "name": "imgcategoring",
+    "productType": null,
+    "stack": []
+  },
+  "sources": {
+    "tokens": [],
+    "components": [],
+    "assets": [
+      "assets"
+    ],
+    "instructions": []
+  },
+  "design": {
+    "colorMode": "light",
+    "colors": {
+      "background": "#F3FBFF",
+      "surface": "#FFFFFF",
+      "primary": "#106EBE",
+      "accent": "#0FFCBE",
+      "ink": "#0B3A66"
+    },
+    "typography": {
+      "ui": "Segoe UI"
+    },
+    "spacing": {},
+    "radius": {
+      "control": 12,
+      "card": 16
+    },
+    "shadows": {},
+    "motion": {
+      "hover": "color fade"
+    },
+    "density": "comfortable"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "Stay on CustomTkinter",
+      "Keep blue #106EBE and mint #0FFCBE",
+      "Leave original photos in place"
+    ],
+    "avoid": [
+      "Replacing the sidebar workflow",
+      "Migrating the window to a web framework"
+    ]
+  },
+  "decisions": [
+    "The desktop window keeps the blue and mint palette and the existing sort, pause, and group flows."
+  ],
+  "evidence": [],
+  "generatedAt": "2026-10-06T12:06:22.863Z"
+}
