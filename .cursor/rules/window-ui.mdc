@@ -1,0 +1,27 @@
+---
+description: Use the project UI skills when changing the Event Photos window
+globs: src/gui.py,src/icons.py
+alwaysApply: false
+---
+
+# Window UI
+
+Read the project skills in `.cursor/skills/` before changing the desktop window. Use `redesign-existing-projects` and `design-taste-frontend` for visual changes, and `21st-ui-build` or `21st-ui-review` when building or checking the screen.
+
+Keep the window on CustomTkinter. Do not move it to a web framework.
+
+Keep these colors:
+
+- Blue `#106EBE` for the sidebar, primary buttons, and links
+- Mint `#0FFCBE` for the current page, the selected group, and highlights
+- White `#FFFFFF` for cards and fields
+
+```python
+# Good: reuse the existing palette
+button.configure(fg_color="#106EBE", text_color="#FFFFFF", hover_color="#0C8FD4")
+
+# Bad: introduce a new accent or replace the sidebar with a web layout
+button.configure(fg_color="#7C3AED")
+```
+
+Preserve sort, pause, resume, stop, folder browsing, and creating or editing groups. A visual change must leave those actions working.
