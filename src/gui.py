@@ -104,6 +104,8 @@ class SorterApp:
             "save-off": ctk_icon("save", DISABLED_TEXT, 16),
             "back": ctk_icon("back", BLUE, 14),
             "photos": ctk_icon("photos", MINT, 20),
+            "plus": ctk_icon("plus", WHITE, 14),
+            "plus-dark": ctk_icon("plus", BLUE_DEEP, 14),
             "pause": ctk_icon("pause", BLUE, 16),
             "pause-off": ctk_icon("pause", DISABLED_TEXT, 16),
             "play": ctk_icon("play", BLUE, 16),
@@ -168,6 +170,7 @@ class SorterApp:
         self.sort_view.grid_columnconfigure(0, weight=1)
         self.sort_view.grid_rowconfigure(7, weight=1)
         self._build_group_view(main)
+        self._build_new_view(main)
         self._build_sort_view()
 
     def _build_sort_view(self) -> None:
@@ -289,30 +292,36 @@ class SorterApp:
         ctk.CTkLabel(rail, text="GROUPS", text_color="#BFE3F7", font=("Segoe UI", 11, "bold"), anchor="w").pack(
             anchor="w", padx=22, pady=(0, 8)
         )
-        groups = ctk.CTkFrame(rail, fg_color=RAIL, corner_radius=0)
-        groups.pack(fill="both", expand=True, padx=10, pady=(0, 16))
+        self.new_group_button = ctk.CTkButton(
+            rail,
+            text="  New group",
+            image=self._icons["plus"],
+            compound="left",
+            anchor="w",
+            height=36,
+            corner_radius=10,
+            fg_color="#0D5CA0",
+            hover_color="#0A4E88",
+            text_color=WHITE,
+            font=("Segoe UI", 14),
+            hover=False,
+            command=self._show_new_group,
+        )
+        self.new_group_button.pack(fill="x", padx=12, pady=(0, 8))
+        self._wire_hover(self.new_group_button, rest="#0D5CA0", hover=MINT, mint_border=False, text_rest=WHITE, text_hover=BLUE_DEEP)
+        self.new_group_button.bind("<Enter>", lambda _event: self.new_group_button.configure(image=self._icons["plus-dark"]), add="+")
+        self.new_group_button.bind("<Leave>", lambda _event: self.new_group_button.configure(image=self._icons["plus"]), add="+")
+        groups = ctk.CTkScrollableFrame(
+            rail,
+            fg_color=RAIL,
+            corner_radius=0,
+            scrollbar_button_color="#4B9AD8",
+            scrollbar_button_hover_color=MINT,
+        )
+        groups.pack(fill="both", expand=True, padx=6, pady=(0, 12))
+        self._groups_frame = groups
         for name in self._group_names():
-            glyph = GROUP_ICONS.get(name, "photos")
-            image = ctk_icon(glyph, WHITE, 15)
-            self._group_icon_images[name] = image
-            button = ctk.CTkButton(
-                groups,
-                text=f"  {name}",
-                image=image,
-                compound="left",
-                anchor="w",
-                height=36,
-                corner_radius=10,
-                fg_color=RAIL,
-                hover_color="#0D5CA0",
-                text_color=WHITE,
-                font=("Segoe UI", 14),
-                hover=False,
-                command=lambda group=name: self._show_group(group),
-            )
-            button.pack(fill="x", pady=2)
-            self._wire_hover(button, rest=RAIL, hover="#0D5CA0", mint_border=False)
-            self._group_buttons[name] = button
+            self._insert_group_button(name)
 
     def _build_group_view(self, parent: ctk.CTkFrame) -> None:
         view = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
@@ -371,6 +380,127 @@ class SorterApp:
         self.save_group.pack(side="left")
         self.group_status = ctk.CTkLabel(foot, text="", text_color=MUTED, font=("Segoe UI", 13), anchor="w")
         self.group_status.pack(side="left", padx=(12, 0))
+
+    def _build_new_view(self, parent: ctk.CTkFrame) -> None:
+        view = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
+        view.grid_columnconfigure(0, weight=1)
+        view.grid_rowconfigure(6, weight=1)
+        self.new_view = view
+
+        back = ctk.CTkButton(
+            view,
+            text=" Back to sort",
+            image=self._icons["back"],
+            compound="left",
+            command=self._show_sort,
+            fg_color="transparent",
+            hover_color=MINT_SOFT,
+            text_color=BLUE,
+            font=("Segoe UI", 13),
+            anchor="w",
+            height=32,
+            corner_radius=8,
+            hover=False,
+        )
+        back.grid(row=0, column=0, sticky="w")
+        self._wire_hover(back, rest="transparent", hover=MINT_SOFT, mint_border=False, text_rest=BLUE, text_hover=BLUE_DEEP)
+
+        ctk.CTkLabel(view, text="New group", text_color=INK, font=("Segoe UI", 26), anchor="w").grid(
+            row=1, column=0, sticky="ew", pady=(10, 4)
+        )
+        ctk.CTkLabel(
+            view,
+            text="Name the folder, then describe the photos that belong in it. Sort again to start using it.",
+            text_color=MUTED,
+            font=("Segoe UI", 13),
+            anchor="w",
+            justify="left",
+            wraplength=540,
+        ).grid(row=2, column=0, sticky="ew", pady=(0, 12))
+
+        ctk.CTkLabel(view, text="Group name", text_color=INK, font=("Segoe UI", 14, "bold"), anchor="w").grid(
+            row=3, column=0, sticky="w"
+        )
+        self.new_name_var = tk.StringVar()
+        self.new_name_entry = ctk.CTkEntry(
+            view,
+            textvariable=self.new_name_var,
+            height=42,
+            corner_radius=12,
+            fg_color=FIELD,
+            border_color=LINE,
+            border_width=1,
+            text_color=INK,
+            placeholder_text="Cake table",
+            font=("Segoe UI", 13),
+        )
+        self.new_name_entry.grid(row=4, column=0, sticky="ew", pady=(6, 12))
+        self.new_name_entry.bind("<FocusIn>", lambda _event: self.new_name_entry.configure(border_color=BLUE, border_width=2))
+        self.new_name_entry.bind("<FocusOut>", lambda _event: self.new_name_entry.configure(border_color=LINE, border_width=1))
+
+        ctk.CTkLabel(view, text="Description", text_color=INK, font=("Segoe UI", 14, "bold"), anchor="w").grid(
+            row=5, column=0, sticky="nw"
+        )
+        self.new_prompt = ctk.CTkTextbox(
+            view,
+            fg_color=SURFACE,
+            text_color=INK,
+            font=("Segoe UI", 15),
+            corner_radius=16,
+            border_width=1,
+            border_color=LINE,
+            wrap="word",
+            height=140,
+        )
+        self.new_prompt.grid(row=6, column=0, sticky="nsew", pady=(6, 0))
+        self.new_prompt.bind("<FocusIn>", lambda _event: self.new_prompt.configure(border_color=BLUE))
+        self.new_prompt.bind("<FocusOut>", lambda _event: self.new_prompt.configure(border_color=LINE))
+
+        foot = ctk.CTkFrame(view, fg_color=BG, corner_radius=0)
+        foot.grid(row=7, column=0, sticky="ew", pady=(14, 0))
+        self.create_group = self._button(foot, "Create group", self._create_group, primary=True, icon="plus")
+        self.create_group.pack(side="left")
+        ctk.CTkLabel(
+            foot,
+            text="Example: a photo of a wedding cake table",
+            text_color=MUTED,
+            font=("Segoe UI", 12),
+            anchor="w",
+        ).pack(side="left", padx=(12, 0))
+
+    def _insert_group_button(self, name: str) -> None:
+        glyph = GROUP_ICONS.get(name, "photos")
+        image = ctk_icon(glyph, WHITE, 15)
+        self._group_icon_images[name] = image
+        button = ctk.CTkButton(
+            self._groups_frame,
+            text=f"  {name}",
+            image=image,
+            compound="left",
+            anchor="w",
+            height=36,
+            corner_radius=10,
+            fg_color=RAIL,
+            hover_color="#0D5CA0",
+            text_color=WHITE,
+            font=("Segoe UI", 14),
+            hover=False,
+            command=lambda group=name: self._show_group(group),
+        )
+        review = self._group_buttons.get(self.settings.review_label)
+        if review is not None and name != self.settings.review_label:
+            button.pack(fill="x", pady=2, before=review)
+        else:
+            button.pack(fill="x", pady=2)
+        self._wire_hover(button, rest=RAIL, hover="#0D5CA0", mint_border=False)
+        self._group_buttons[name] = button
+
+    def _reveal_group(self, name: str) -> None:
+        canvas = getattr(self._groups_frame, "_parent_canvas", None)
+        if canvas is None:
+            return
+        self._groups_frame.update_idletasks()
+        canvas.yview_moveto(1.0)
 
     def _field_row(
         self,
@@ -558,11 +688,13 @@ class SorterApp:
                 self._main.configure(fg_color=BG)
                 self.sort_view.configure(fg_color=BG)
                 self.group_view.configure(fg_color=BG)
+                self.new_view.configure(fg_color=BG)
                 return
             color = frames[index]
             self._main.configure(fg_color=color)
             self.sort_view.configure(fg_color=color)
             self.group_view.configure(fg_color=color)
+            self.new_view.configure(fg_color=color)
             self.root.after(45, lambda: tick(index + 1))
 
         tick()
@@ -729,13 +861,40 @@ class SorterApp:
         self._selected = ""
         self._paint_groups()
         self.group_view.grid_remove()
+        self.new_view.grid_remove()
         self.sort_view.grid(row=0, column=0, sticky="nsew")
         self._flash_view()
+
+    def _show_new_group(self) -> None:
+        self._selected = ""
+        self._paint_groups()
+        self.sort_view.grid_remove()
+        self.group_view.grid_remove()
+        self.new_name_var.set("")
+        self.new_prompt.delete("1.0", "end")
+        self.new_view.grid(row=0, column=0, sticky="nsew")
+        self._flash_view()
+        self.new_name_entry.focus()
+
+    def _create_group(self) -> None:
+        try:
+            from src.labels import add_category
+
+            name = add_category(DEFAULT_CONFIG, self.new_name_var.get(), self.new_prompt.get("1.0", "end"))
+            self.settings = self._load_group_settings()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Event photos", str(exc))
+            return
+        self._insert_group_button(name)
+        self._reveal_group(name)
+        self._show_group(name)
+        self.group_status.configure(text="Created. Sort again to use this group.")
 
     def _show_group(self, name: str) -> None:
         self._selected = name
         self._paint_groups()
         self.sort_view.grid_remove()
+        self.new_view.grid_remove()
         self.group_view.grid(row=0, column=0, sticky="nsew")
         self.group_title.configure(text=name)
         self.group_status.configure(text="")

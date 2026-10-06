@@ -84,10 +84,7 @@ def save_category_prompt(path: Path, name: str, prompt: str) -> None:
     if not prompt:
         raise ValueError("The group description cannot be empty.")
 
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or not isinstance(raw.get("categories"), list):
-        raise ValueError(f"{path} does not contain a category list.")
-
+    raw = _read_category_file(path)
     matched = False
     for entry in raw["categories"]:
         if isinstance(entry, dict) and str(entry.get("name") or "").strip() == name:
@@ -96,7 +93,63 @@ def save_category_prompt(path: Path, name: str, prompt: str) -> None:
             break
     if not matched:
         raise ValueError(f"No group named {name!r} in {path}.")
+    _write_category_file(path, raw)
 
+
+def add_category(path: Path, name: str, prompt: str) -> str:
+    """Append a group and return the name that was saved."""
+    name = _clean_group_name(name)
+    prompt = prompt.strip()
+    if not prompt:
+        raise ValueError("Write a description so photos can be compared with this group.")
+    if len(prompt) > 400:
+        raise ValueError("Keep the description under 400 characters.")
+
+    raw = _read_category_file(path)
+    review = str(raw.get("review_label") or "Needs review").strip()
+    reserved = {review.casefold(), "unreadable"}
+    if name.casefold() in reserved:
+        raise ValueError(f"{name!r} is reserved. Choose another name.")
+
+    from src.export import safe_folder_name
+
+    folder = safe_folder_name(name)
+    used = {review.casefold()}
+    for entry in raw["categories"]:
+        if not isinstance(entry, dict):
+            continue
+        existing = str(entry.get("name") or "").strip()
+        if existing.casefold() == name.casefold():
+            raise ValueError(f"A group named {existing!r} already exists.")
+        used.add(safe_folder_name(existing).casefold())
+    if folder.casefold() in used:
+        raise ValueError(f"{name!r} would use the same folder as another group.")
+
+    raw["categories"].append({"name": name, "prompt": prompt})
+    _write_category_file(path, raw)
+    return name
+
+
+def _clean_group_name(name: str) -> str:
+    cleaned = " ".join(name.split()).strip().rstrip(".")
+    if not cleaned:
+        raise ValueError("Give the group a name.")
+    if len(cleaned) > 40:
+        raise ValueError("Keep the group name under 40 characters.")
+    blocked = '<>:"/\\|?*'
+    if any(char in cleaned for char in blocked):
+        raise ValueError(f"The name cannot contain {blocked}.")
+    return cleaned
+
+
+def _read_category_file(path: Path) -> dict:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("categories"), list):
+        raise ValueError(f"{path} does not contain a category list.")
+    return raw
+
+
+def _write_category_file(path: Path, raw: dict) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     header: list[str] = []
     for line in lines:

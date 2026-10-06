@@ -91,7 +91,7 @@ Choose the sorted folder in the sidebar. Pick a group to see its photos, or sear
 
 ## Change the groups
 
-Edit [config/categories.yaml](config/categories.yaml). Each entry needs a folder `name` and a `prompt` that describes the photo you want in that group. Then run the sorter again. Cached image vectors are reused; only the labels are recalculated.
+Click **New group** in the window, enter a folder name and a sentence such as `a photo of a wedding cake table`, then click **Create group**. Sort again to use it. You can also edit [config/categories.yaml](config/categories.yaml). Each entry needs a folder `name` and a `prompt`. Cached image vectors are reused; only the labels are recalculated.
 
 ## How a photo is filed
 
