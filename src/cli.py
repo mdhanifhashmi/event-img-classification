@@ -10,6 +10,7 @@ from pathlib import Path
 
 try:
     from src.classify import collect_embeddings, embed_texts, load_backend, pick_device
+    from src.control import SortCancelled
     from src.export import PhotoRecord, already_sorted_sources, export_records, safe_folder_name
     from src.labels import assign_labels, load_settings
     from src.scan import register_heif, scan_images
@@ -52,7 +53,29 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+STOPPED = 130
+
+
 def run(args: argparse.Namespace) -> int:
+    try:
+        return _run(args)
+    except SortCancelled as exc:
+        _notify(args, str(exc) or "Stopped.")
+        return STOPPED
+
+
+def _pause_point(args: argparse.Namespace, message: str) -> None:
+    """Wait here while paused, and stop with `message` if the user asked to stop."""
+    control = getattr(args, "control", None)
+    if control is None:
+        return
+    try:
+        control.checkpoint()
+    except SortCancelled:
+        raise SortCancelled(message) from None
+
+
+def _run(args: argparse.Namespace) -> int:
     if args.batch_size < 1:
         raise ValueError("--batch-size must be at least 1.")
     if args.threshold is not None and not 0.0 <= args.threshold <= 1.0:
@@ -97,9 +120,12 @@ def run(args: argparse.Namespace) -> int:
             return 0
 
     _notify(args, f"Found {len(photos)} image{'s' if len(photos) != 1 else ''} in {input_dir}")
+    untouched = "Stopped before any photos were copied. Your groups were not changed."
+    _pause_point(args, untouched)
     device = pick_device(args.device)
     _notify(args, f"Loading {model_id} on {device} (first run downloads the model)...")
     backend = load_backend(model_id, device)
+    _pause_point(args, untouched)
     cache = load_cache(output_dir)
     if cache is not None and cache.model != model_id:
         _notify(args, f"Cached embeddings are for {cache.model}, so photos will be embedded again.")
@@ -110,12 +136,19 @@ def run(args: argparse.Namespace) -> int:
         cache,
         args.batch_size,
         on_status=getattr(args, "on_status", None),
+        control=getattr(args, "control", None),
     )
     if len(matrix):
         if keep_existing:
             merge_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
         else:
             save_cache(output_dir, model_id, cache_paths, cache_mtimes, cache_sizes, matrix)
+    control = getattr(args, "control", None)
+    if control is not None and control.stopped:
+        raise SortCancelled(
+            f"Stopped. {len(cache_paths)} of {len(photos)} photos are analysed and saved, "
+            "so sorting again continues from there. No photos were copied and your groups were not changed."
+        )
 
     text_embeds = embed_texts(backend, settings.prompts)
     failure_by_path = {path: message for path, message in failures}
@@ -145,13 +178,20 @@ def run(args: argparse.Namespace) -> int:
         _notify(args, "Adding photos to the existing groups...")
     else:
         _notify(args, "Copying photos into group folders...")
-    manifest = export_records(
-        records,
-        input_dir,
-        output_dir,
-        [*folder_names, "Unreadable"],
-        keep_existing=keep_existing,
-    )
+    try:
+        manifest = export_records(
+            records,
+            input_dir,
+            output_dir,
+            [*folder_names, "Unreadable"],
+            keep_existing=keep_existing,
+            control=control,
+        )
+    except SortCancelled:
+        raise SortCancelled(
+            "Stopped while copying. The photos copied so far are listed in manifest.csv. "
+            "Tick 'Keep photos already sorted' and sort again to add the rest."
+        ) from None
     LAST_RUN.write_text(
         json.dumps({"output": str(output_dir), "min_score": min_score, "model": model_id}),
         encoding="utf-8",

@@ -38,6 +38,13 @@ Libraries:
 | streamlit | Local gallery in the browser |
 | customtkinter | Rounded window for choosing folders and sorting |
 
+## Open the app with a double-click
+
+1. Double-click `Setup.bat` once. It creates the environment and installs the libraries.
+2. Double-click `Event Photos.bat` any time after that. The window opens without a console.
+
+Right-click `Event Photos.bat`, choose **Send to > Desktop (create shortcut)**, and use the shortcut from the desktop.
+
 ## Sort a folder
 
 Open the small window, browse to the mixed photo folder, browse to an output folder, then click **Sort photos**:
@@ -45,6 +52,10 @@ Open the small window, browse to the mixed photo folder, browse to an output fol
 ```powershell
 python -m src.gui
 ```
+
+While a sort runs, **Pause** holds it at the next safe point (a photo batch that has started finishes first) and **Resume** continues it. **Stop** cancels it. After a stop, click **Sort photos** again: photos that were already analysed are reused, so the second run is much shorter. Nothing is copied until analysis has finished, so stopping early leaves your groups as they were.
+
+The sort runs in its own process, so the window keeps responding even on a busy PC. If the worker ever stops answering after you press **Stop**, the window ends it after 10 seconds. Closing the window during a sort asks first and then ends the worker too.
 
 The same sort can be started from the command line:
 

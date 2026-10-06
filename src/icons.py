@@ -59,6 +59,13 @@ def draw_icon(name: str, color: str, size: int = 20) -> Image.Image:
     elif name == "save":
         draw.rounded_rectangle((x0, y0, x1, y1), radius=3, **_pen(color, stroke))
         draw.polygon([(mid_x - 3, mid_y + 1), (mid_x, mid_y + 4), (mid_x + 5, mid_y - 3)], outline=color, width=stroke)
+    elif name == "pause":
+        draw.rounded_rectangle((x0 + 3, y0 + 1, mid_x - 2, y1 - 1), radius=2, fill=color)
+        draw.rounded_rectangle((mid_x + 2, y0 + 1, x1 - 3, y1 - 1), radius=2, fill=color)
+    elif name == "play":
+        draw.polygon([(x0 + 4, y0 + 1), (x1 - 1, mid_y), (x0 + 4, y1 - 1)], fill=color)
+    elif name == "stop":
+        draw.rounded_rectangle((x0 + 2, y0 + 2, x1 - 2, y1 - 2), radius=3, fill=color)
     elif name == "back":
         _line(draw, [(mid_x + 3, y0 + 2), (x0 + 2, mid_y), (mid_x + 3, y1 - 2)], color, stroke)
     elif name == "photos":

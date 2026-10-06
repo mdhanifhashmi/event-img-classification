@@ -1,13 +1,16 @@
-﻿"""Rounded window for choosing folders and sorting event photos."""
+"""Rounded window for choosing folders and sorting event photos."""
 
 from __future__ import annotations
 
+import json
 import os
 import queue
+import subprocess
 import sys
+import tempfile
 import threading
+import time
 import tkinter as tk
-from argparse import Namespace
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -79,8 +82,14 @@ class SorterApp:
         self.root.minsize(860, 560)
         self.root.configure(fg_color=BG)
         self._set_window_icon()
-        self.messages: queue.Queue[tuple[str, str]] = queue.Queue()
+        self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._running = False
+        self._proc: subprocess.Popen | None = None
+        self._errlog = None
+        self._paused = False
+        self._stopping = False
+        self._outcome = False
+        self._stop_deadline = 0.0
         self._pulse_job: str | None = None
         self._pulse_on = False
         self._anim_jobs: dict[int, str] = {}
@@ -95,7 +104,13 @@ class SorterApp:
             "save-off": ctk_icon("save", DISABLED_TEXT, 16),
             "back": ctk_icon("back", BLUE, 14),
             "photos": ctk_icon("photos", MINT, 20),
+            "pause": ctk_icon("pause", BLUE, 16),
+            "pause-off": ctk_icon("pause", DISABLED_TEXT, 16),
+            "play": ctk_icon("play", BLUE, 16),
+            "stop": ctk_icon("stop", DANGER, 16),
+            "stop-off": ctk_icon("stop", DISABLED_TEXT, 16),
         }
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
@@ -208,6 +223,10 @@ class SorterApp:
         actions.grid(row=6, column=0, sticky="w", pady=(0, 16))
         self.sort_button = self._button(actions, "Sort photos", self._start, primary=True, icon="sort")
         self.sort_button.pack(side="left")
+        self.pause_button = self._button(actions, "Pause", self._toggle_pause, primary=False, icon="pause")
+        self.pause_button.pack(side="left", padx=(10, 0))
+        self.stop_button = self._button(actions, "Stop", self._stop, primary=False, icon="stop", danger=True)
+        self.stop_button.pack(side="left", padx=(10, 0))
         self.open_button = self._button(actions, "Open folder", self._open_output, primary=False, icon="open")
         self.open_button.pack(side="left", padx=(10, 0))
 
@@ -412,7 +431,9 @@ class SorterApp:
         self._wire_hover(browse, rest=SURFACE, hover=MINT_SOFT, mint_border=True, text_rest=BLUE, text_hover=BLUE_DEEP)
         return entry, browse
 
-    def _button(self, parent, text: str, command, *, primary: bool, icon: str) -> ctk.CTkButton:
+    def _button(
+        self, parent, text: str, command, *, primary: bool, icon: str, danger: bool = False
+    ) -> ctk.CTkButton:
         if primary:
             button = ctk.CTkButton(
                 parent,
@@ -443,12 +464,15 @@ class SorterApp:
             hover_color=MINT_SOFT,
             border_width=1,
             border_color=LINE,
-            text_color=BLUE,
+            text_color=DANGER if danger else BLUE,
             text_color_disabled=DISABLED_TEXT,
             font=("Segoe UI", 14),
             hover=False,
         )
-        self._wire_hover(button, rest=SURFACE, hover=MINT_SOFT, mint_border=True, text_rest=BLUE, text_hover=BLUE_DEEP)
+        if danger:
+            self._wire_hover(button, rest=SURFACE, hover="#FDEEEE", mint_border=False, text_rest=DANGER, text_hover=DANGER)
+        else:
+            self._wire_hover(button, rest=SURFACE, hover=MINT_SOFT, mint_border=True, text_rest=BLUE, text_hover=BLUE_DEEP)
         return button
 
     def _wire_hover(
@@ -604,6 +628,8 @@ class SorterApp:
         if self._running:
             return
         ready = bool(self.input_var.get().strip() and self.output_var.get().strip())
+        self._enable(self.pause_button, False)
+        self._enable(self.stop_button, False)
         self._enable(self.sort_button, ready)
         output = self.output_var.get().strip()
         self._enable(self.open_button, bool(output) and Path(output).is_dir())
@@ -617,14 +643,38 @@ class SorterApp:
         self._enable(self.output_button, not busy)
         self.keep_check.configure(state="normal" if not busy else "disabled")
         if busy:
+            self._paused = False
+            self._stopping = False
+            self._set_pause_label("pause")
             self._enable(self.sort_button, False)
             self._enable(self.open_button, False)
+            self._enable(self.pause_button, True)
+            self._enable(self.stop_button, True)
             self._set_status_tone("busy")
         else:
+            self._paused = False
+            self._stopping = False
+            self._set_pause_label("pause")
+            self._enable(self.pause_button, False)
+            self._enable(self.stop_button, False)
             self._refresh_buttons()
+
+    def _set_pause_label(self, mode: str) -> None:
+        if mode == "resume":
+            self.pause_button.configure(text="  Resume", image=self._icons["play"])
+        elif mode == "pausing":
+            self.pause_button.configure(text="  Pausing...", image=self._icons["pause"])
+        else:
+            self.pause_button.configure(text="  Pause", image=self._icons["pause"])
 
     def _enable(self, button: ctk.CTkButton, enabled: bool) -> None:
         button.configure(state="normal" if enabled else "disabled")
+        if button is getattr(self, "pause_button", None) and not enabled:
+            button.configure(image=self._icons["pause-off"])
+            return
+        if button is getattr(self, "stop_button", None):
+            button.configure(image=self._icons["stop" if enabled else "stop-off"])
+            return
         if button is getattr(self, "sort_button", None):
             if enabled:
                 button.configure(fg_color=BLUE, text_color=WHITE, image=self._icons["sort"])
@@ -639,14 +689,14 @@ class SorterApp:
 
     def _set_status_tone(self, tone: str) -> None:
         self._stop_pulse()
-        color = {"idle": "#8FB8D4", "busy": MINT, "done": OK, "error": DANGER}.get(tone, MUTED)
+        color = {"idle": "#8FB8D4", "busy": MINT, "paused": BLUE_HOVER, "done": OK, "error": DANGER}.get(tone, MUTED)
         self.status_dot.configure(fg_color=color)
         if tone == "busy":
             self._pulse_on = True
             self._pulse()
 
     def _pulse(self) -> None:
-        if not self._running:
+        if not self._running or self._paused:
             return
         self._pulse_on = not self._pulse_on
         self.status_dot.configure(fg_color=MINT if self._pulse_on else BLUE)
@@ -743,64 +793,219 @@ class SorterApp:
             return
 
         self._clear_log()
+        self._outcome = False
+        self._queue = queue.Queue()
+        try:
+            self._launch(input_dir, output_dir)
+        except OSError as exc:
+            messagebox.showerror("Event photos", f"Could not start the sort: {exc}")
+            return
         self._set_busy(True)
-        self.status_var.set("Startingâ€¦")
+        self.status_var.set("Starting...")
         self._append("Starting sort")
-        worker = threading.Thread(target=self._sort, args=(input_dir, output_dir), daemon=True)
-        worker.start()
         self.root.after(100, self._poll)
 
-    def _sort(self, input_dir: Path, output_dir: Path) -> None:
-        try:
-            from src.cli import run
-        except ModuleNotFoundError as exc:
-            self.messages.put(("error", f"Missing library '{exc.name}'. Follow the setup steps in README.md."))
-            return
-        args = Namespace(
-            input=input_dir,
-            output=output_dir,
-            config=DEFAULT_CONFIG,
-            threshold=None,
-            batch_size=4,
-            device="auto",
-            model=None,
-            keep_existing=bool(self.keep_var.get()),
-            on_status=lambda message: self.messages.put(("status", message)),
+    def _worker_python(self) -> str:
+        python = Path(sys.executable)
+        if python.name.lower() == "pythonw.exe":
+            console = python.with_name("python.exe")
+            if console.exists():
+                return str(console)
+        return str(python)
+
+    def _launch(self, input_dir: Path, output_dir: Path) -> None:
+        """Run the sort in its own process so this window never waits on it."""
+        command = [
+            self._worker_python(),
+            "-m",
+            "src.runner",
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_dir),
+            "--batch-size",
+            "4",
+        ]
+        if self.keep_var.get():
+            command.append("--keep-existing")
+        environment = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        self._errlog = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+        self._proc = subprocess.Popen(  # noqa: S603 - fixed arguments, no shell
+            command,
+            cwd=str(ROOT),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self._errlog,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+            env=environment,
+            creationflags=flags,
         )
+        threading.Thread(target=self._read_output, args=(self._proc, self._queue), daemon=True).start()
+
+    @staticmethod
+    def _read_output(proc: subprocess.Popen, events: queue.Queue) -> None:
         try:
-            run(args)
-        except (ValueError, FileNotFoundError, RuntimeError) as exc:
-            self.messages.put(("error", str(exc)))
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                events.put((str(event.get("kind", "status")), str(event.get("message", ""))))
+        except (OSError, ValueError):
+            pass
+        finally:
+            events.put(("exit", str(proc.wait())))
+
+    def _send(self, command: str) -> None:
+        proc = self._proc
+        if proc is None or proc.stdin is None or proc.poll() is not None:
             return
-        except Exception as exc:
-            self.messages.put(("error", str(exc)))
+        try:
+            proc.stdin.write(command + "\n")
+            proc.stdin.flush()
+        except (OSError, ValueError):
+            pass
+
+    def _kill_process(self) -> None:
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
             return
-        self.messages.put(("done", str(output_dir)))
+        try:
+            # The virtual environment launcher starts a second Python, so end the whole tree.
+            subprocess.run(  # noqa: S603, S607
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                timeout=10,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            proc.kill()
+
+    def _toggle_pause(self) -> None:
+        if not self._running or self._stopping:
+            return
+        self._enable(self.pause_button, False)
+        if self._paused:
+            self._send("resume")
+            self.status_var.set("Resuming...")
+        else:
+            self._send("pause")
+            self._set_pause_label("pausing")
+            self.status_var.set("Pausing at the next safe point. A photo batch in progress finishes first.")
+
+    def _stop(self) -> None:
+        if not self._running or self._stopping:
+            return
+        self._stopping = True
+        self._enable(self.pause_button, False)
+        self._enable(self.stop_button, False)
+        self.status_var.set("Stopping. The photo batch in progress finishes first.")
+        self._append("Stop requested")
+        self._send("stop")
+        self._stop_deadline = time.monotonic() + 10
+        self.root.after(300, self._watch_stop)
+
+    def _watch_stop(self) -> None:
+        if not self._running or not self._stopping or self._outcome:
+            return
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return
+        if time.monotonic() >= self._stop_deadline:
+            self._kill_process()
+            self._append("The sort did not answer, so it was ended.")
+            self._finish(
+                "idle",
+                "Stopped. Photos already copied are listed in manifest.csv. Sort again to continue.",
+            )
+            return
+        self.root.after(300, self._watch_stop)
+
+    def _finish(self, tone: str, text: str) -> None:
+        self._outcome = True
+        self.status_var.set(text)
+        self._set_status_tone(tone)
+        self._set_busy(False)
+
+    def _error_tail(self) -> str:
+        if self._errlog is None:
+            return ""
+        try:
+            self._errlog.flush()
+            self._errlog.seek(0)
+            lines = [line.strip() for line in self._errlog.read().splitlines() if line.strip()]
+        except (OSError, ValueError):
+            return ""
+        return lines[-1] if lines else ""
 
     def _poll(self) -> None:
+        events = self._queue
         while True:
             try:
-                kind, message = self.messages.get_nowait()
+                kind, message = events.get_nowait()
             except queue.Empty:
                 break
+            if self._outcome:
+                continue
             if kind == "status":
                 self.status_var.set(message)
                 self._append(message)
+            elif kind == "state":
+                if message == "paused":
+                    self._paused = True
+                    self._set_pause_label("resume")
+                    self._enable(self.pause_button, not self._stopping)
+                    self._set_status_tone("paused")
+                    self.status_var.set("Paused. Press Resume to continue, or Stop to cancel.")
+                    self._append("Paused")
+                elif message == "resumed":
+                    self._paused = False
+                    self._set_pause_label("pause")
+                    self._enable(self.pause_button, not self._stopping)
+                    self._set_status_tone("busy")
+                    self.status_var.set("Working...")
+                    self._append("Resumed")
             elif kind == "error":
-                self.status_var.set(message)
                 self._append(message)
-                self._set_status_tone("error")
-                self._set_busy(False)
+                self._finish("error", message)
                 messagebox.showerror("Event photos", message)
                 return
             elif kind == "done":
-                self.status_var.set("Finished. Original photos were left in place.")
                 self._append("Finished")
-                self._set_status_tone("done")
-                self._set_busy(False)
+                self._finish("done", "Finished. Original photos were left in place.")
                 return
-        if self._running:
+            elif kind == "stopped":
+                self._append("Stopped")
+                self._finish("idle", "Stopped. Sort again to continue. Photos already analysed are reused.")
+                return
+            elif kind == "exit":
+                detail = self._error_tail()
+                text = "The sort closed unexpectedly."
+                if detail:
+                    text = f"{text} {detail}"
+                self._append(text)
+                self._finish("error", text)
+                messagebox.showerror("Event photos", text)
+                return
+        if self._running and not self._outcome:
             self.root.after(100, self._poll)
+
+    def _on_close(self) -> None:
+        if self._running:
+            if not messagebox.askyesno(
+                "Event photos",
+                "A sort is still running. Stop it and close the window?",
+            ):
+                return
+            self._send("stop")
+            self._kill_process()
+        self.root.destroy()
 
     def _append(self, message: str) -> None:
         self.log.configure(state="normal")

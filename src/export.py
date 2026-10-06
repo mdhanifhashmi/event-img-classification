@@ -8,6 +8,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.control import RunControl
+
 
 MANIFEST_NAME = "manifest.csv"
 MANIFEST_FIELDS = [
@@ -137,6 +139,7 @@ def export_records(
     output_dir: Path,
     folder_names: list[str],
     keep_existing: bool = False,
+    control: RunControl | None = None,
 ) -> Path:
     """Copy photos into group folders and write the manifest.
 
@@ -160,7 +163,10 @@ def export_records(
         writer.writeheader()
         for row in previous_rows:
             writer.writerow({field: row.get(field, "") for field in MANIFEST_FIELDS})
+        handle.flush()
         for record in records:
+            if control is not None:
+                control.checkpoint()
             destinations: list[str] = []
             if not record.error:
                 filename = filenames[record.source]
@@ -180,4 +186,5 @@ def export_records(
                     "error": record.error,
                 }
             )
+            handle.flush()
     return manifest_path

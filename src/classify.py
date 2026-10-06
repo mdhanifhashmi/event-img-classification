@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+from src.control import RunControl, SortCancelled
 from src.store import EmbeddingCache, file_signature
 
 TEXT_MAX_LENGTH = 64
@@ -124,6 +125,7 @@ def collect_embeddings(
     cache: EmbeddingCache | None,
     batch_size: int,
     on_status: Callable[[str], None] | None = None,
+    control: RunControl | None = None,
 ) -> tuple[dict[str, np.ndarray], list[tuple[Path, str]], list[str], list[int], list[int], np.ndarray]:
     """Embed paths, reusing cache rows whose path, mtime, and size still match.
 
@@ -157,6 +159,12 @@ def collect_embeddings(
         steps = range(0, len(pending), batch_size)
         report(f"Embedding {len(pending)} photo{'s' if len(pending) != 1 else ''}...")
         for start in tqdm(steps, desc="Embedding photos", unit="batch"):
+            if control is not None:
+                try:
+                    control.checkpoint()
+                except SortCancelled:
+                    report("Stopping after the last finished batch...")
+                    break
             chunk = pending[start : start + batch_size]
             loaded: list[tuple[Path, Image.Image]] = []
             for path in chunk:
