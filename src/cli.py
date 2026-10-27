@@ -14,7 +14,7 @@ try:
     from src.export import PhotoRecord, already_sorted_sources, export_records, safe_folder_name
     from src.labels import assign_labels, load_settings
     from src.scan import register_heif, scan_images
-    from src.scores import sigmoid_scores
+    from src.scores import best_per_group, sigmoid_scores
     from src.store import load_cache, merge_cache, save_cache
 except ModuleNotFoundError as exc:
     print(f"Missing library '{exc.name}'. Follow the setup steps in README.md.", file=sys.stderr)
@@ -150,7 +150,8 @@ def _run(args: argparse.Namespace) -> int:
             "so sorting again continues from there. No photos were copied and your groups were not changed."
         )
 
-    text_embeds = embed_texts(backend, settings.prompts)
+    prompt_texts, prompt_owners = settings.flat_prompts
+    text_embeds = embed_texts(backend, prompt_texts)
     failure_by_path = {path: message for path, message in failures}
     records: list[PhotoRecord] = []
     for path in photos:
@@ -169,7 +170,8 @@ def _run(args: argparse.Namespace) -> int:
             continue
         key = str(path.resolve())
         image_row = vectors[key]
-        probabilities = sigmoid_scores(image_row, text_embeds, backend.logit_scale, backend.logit_bias)[0]
+        prompt_scores = sigmoid_scores(image_row, text_embeds, backend.logit_scale, backend.logit_bias)
+        probabilities = best_per_group(prompt_scores, prompt_owners, len(settings.names))[0]
         scores = {name: float(score) for name, score in zip(settings.names, probabilities, strict=True)}
         primary, others = assign_labels(scores, min_score, settings.review_label)
         records.append(PhotoRecord(source=path, primary=primary, others=others, scores=scores))

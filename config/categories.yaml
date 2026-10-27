@@ -1,28 +1,62 @@
-# Event photo groups. Edit the prompts in your own words, then sort again.
+# Photo groups for the Bengaluru Tech Summit (event 4) drone/360 shots.
 # A photo is copied into every group whose score is at least min_score.
-# If nothing reaches min_score, it is copied into the review folder.
-# Scores are SigLIP probabilities (0 to 1). The published cat example scores
-# about 0.32 on the right description. Lower min_score if too many photos
-# land in review; raise it if groups get too mixed.
+# Each group has one main `prompt` and optional `extra_prompts`. The group
+# score is the best score among its prompts, so list different looks of the
+# same scene (day/night, close/far) as separate prompts instead of one long one.
+# If nothing reaches min_score, the photo goes to the review folder.
+# Scores are SigLIP probabilities (0 to 1).
+#
+# Tip: specific prompts that describe what is actually in the frame (carpet
+# colour, table cloths, tent roof) work far better than generic words.
 
 model: google/siglip-base-patch16-224
 min_score: 0.10
 review_label: Needs review
 
 categories:
-  - name: Stage
-    prompt: a photo of an event stage, mandap, or raised performance platform
-  - name: Decoration
-    prompt: a photo of event decoration, flowers, a floral backdrop, or drapes
-  - name: Guests
-    prompt: a photo of guests or a crowd of people at an event
-  - name: Ceremony
-    prompt: a photo of a ceremony in progress at a wedding or event
-  - name: Food
-    prompt: a photo of food, drinks, a buffet, or catering at an event
-  - name: Venue
-    prompt: a photo of an event venue, banquet hall, entrance, or building exterior
-  - name: Portrait
-    prompt: a posed portrait of one or two people at an event
-  - name: Lighting
-    prompt: a photo of decorative lighting, chandeliers, or light fixtures at an event
+  - name: Entrance & Exterior
+    prompt: a photo of the entrance gate, registration tent or exterior of a large exhibition venue
+    extra_prompts:
+      - a colorful entrance arch with a red carpet at a conference
+      - a large white dome tent and national flags in front of an exhibition venue
+  - name: Aerial View
+    prompt: an aerial drone photo of a large venue with white tents surrounded by trees
+    extra_prompts:
+      - a bird's eye view of a city park with an event site
+      - an aerial drone photo of a white dome and tents in a garden with visitors walking
+  - name: Palace
+    prompt: a photo of a historic castle-style palace with towers and a lawn
+    extra_prompts:
+      - a heritage palace building with ivy covered walls
+  - name: Main Hall Setup
+    prompt: a large conference hall with a big stage and rows of empty chairs and round tables set up
+    extra_prompts:
+      - a ballroom stage with LED screens and empty chairs before an event
+  - name: Main Hall Crowd
+    prompt: a conference hall full of people seated at round tables in front of a stage
+    extra_prompts:
+      - a large audience attending a keynote in a big hall
+      - a packed auditorium with hundreds of seated attendees viewed from above
+      - a dark hall with blue lighting full of people sitting at tables facing a stage
+      - crowded rows of chairs and delegates in a big conference hall
+  - name: Exhibition
+    prompt: an exhibition hall with rows of booths and stalls on a red carpet
+    extra_prompts:
+      - a trade show floor with stalls under a tent roof
+      - a top-down view of exhibition stalls with monitors and white partition walls
+      - an expo aisle with a red carpet and company booths on both sides
+      - a close view of an exhibition stall with banners and a display
+  - name: Lounge & Corridor
+    prompt: a hall with purple carpet and a few people walking around, lounge area
+    extra_prompts:
+      - a walkway corridor between partition walls at an expo
+  - name: Catering
+    prompt: a photo of a lunch buffet in a hall with a grey carpet and white pillars
+    extra_prompts:
+      - a catering area with black tables
+      - buffet tables with black cloths and chafing dishes in a hall
+      - long tables covered with black tablecloth and silver serving dishes on grey carpet
+  - name: Dome Stage
+    prompt: a stage with screens inside a dome tent with people and colorful bean bags
+    extra_prompts:
+      - the interior of a geodesic dome with purple lights

@@ -42,3 +42,14 @@ def _stable_sigmoid(logits: np.ndarray) -> np.ndarray:
     exp_logits = np.exp(logits[~positive])
     result[~positive] = exp_logits / (1.0 + exp_logits)
     return result
+
+
+def best_per_group(scores: np.ndarray, owners: list[int], groups: int) -> np.ndarray:
+    """Collapse (N, P) prompt scores to (N, groups) by taking the best prompt in each group."""
+    scores = np.asarray(scores, dtype=np.float32)
+    if scores.ndim == 1:
+        scores = scores.reshape(1, -1)
+    result = np.zeros((scores.shape[0], groups), dtype=np.float32)
+    for column, owner in enumerate(owners):
+        result[:, owner] = np.maximum(result[:, owner], scores[:, column])
+    return result

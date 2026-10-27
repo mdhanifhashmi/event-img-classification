@@ -1,4 +1,4 @@
-"""Rounded window for choosing folders and sorting event photos."""
+"""Spatial window for choosing folders and sorting event photos."""
 
 from __future__ import annotations
 
@@ -25,25 +25,39 @@ APP_ICON = ROOT / "assets" / "app.ico"
 BLUE = "#106EBE"
 BLUE_DEEP = "#0B4F8C"
 BLUE_HOVER = "#0C8FD4"
+BLUE_RIM = "#7EC8F2"
 MINT = "#0FFCBE"
 MINT_SOFT = "#E8FFF8"
+MINT_GLOW = "#D8FFF6"
 WHITE = "#FFFFFF"
-BG = "#F3FBFF"
+# Sky field the planes float in. Workspace surfaces use the lighter glass.
+SPACE = "#C5DFF0"
+POOL = "#E7F6FF"
+SHADOW = "#8EB4CE"
+GLASS = "#F7FCFF"
+GLASS_EDGE = "#FFFFFF"
+BG = GLASS
 SURFACE = "#FFFFFF"
 INK = "#0B3A66"
 MUTED = "#5A7A96"
 LINE = "#D4E8F5"
-FIELD = "#F0FAFF"
+FIELD = "#E4F1F9"
 ACCENT = BLUE
 ACCENT_HOVER = "#0C5A9C"
 RAIL = "#106EBE"
+RAIL_EDGE = "#5EB6EA"
 RAIL_MUTED = "#D5ECFA"
+CHIP = "#1783C8"
 DANGER = "#D64545"
 OK = "#0AAF8A"
 BUSY = MINT
 CREAM = WHITE
 DISABLED = "#B7D4EA"
 DISABLED_TEXT = "#7FA3BF"
+PLANE_RADIUS = 30
+NAV_WIDTH = 272
+STAGE_MARGIN = 14
+PLANE_GAP = 16
 
 
 def _enable_sharp_text() -> None:
@@ -79,8 +93,8 @@ class SorterApp:
         ctk.set_default_color_theme("blue")
         self.root = ctk.CTk()
         self.root.title("Event photos")
-        self.root.minsize(860, 560)
-        self.root.configure(fg_color=BG)
+        self.root.minsize(940, 620)
+        self.root.configure(fg_color=SPACE)
         self._set_window_icon()
         self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._running = False
@@ -100,6 +114,7 @@ class SorterApp:
             "sort": ctk_icon("sort", WHITE, 16),
             "sort-off": ctk_icon("sort", DISABLED_TEXT, 16),
             "open": ctk_icon("open", BLUE, 16),
+            "open-off": ctk_icon("open", DISABLED_TEXT, 16),
             "save": ctk_icon("save", WHITE, 16),
             "save-off": ctk_icon("save", DISABLED_TEXT, 16),
             "back": ctk_icon("back", BLUE, 14),
@@ -149,30 +164,106 @@ class SorterApp:
         self.root.after(300, apply)
 
     def _build(self) -> None:
-        outer = ctk.CTkFrame(self.root, fg_color=BG, corner_radius=0)
-        outer.pack(fill="both", expand=True)
+        stage = ctk.CTkFrame(self.root, fg_color=SPACE, corner_radius=0)
+        stage.pack(fill="both", expand=True)
+        self._stage = stage
+        # Soft light sitting in the field, behind the two floating planes.
+        ctk.CTkFrame(stage, fg_color=POOL, corner_radius=190, width=360, height=260).place(x=-110, y=-90)
+        ctk.CTkFrame(stage, fg_color=MINT_GLOW, corner_radius=150, width=280, height=200).place(
+            relx=1.0, rely=1.0, anchor="se", x=80, y=60
+        )
 
-        accent = ctk.CTkFrame(outer, fg_color=MINT, corner_radius=0, width=5)
-        accent.pack(side="left", fill="y")
-
-        rail = ctk.CTkFrame(outer, fg_color=RAIL, corner_radius=0, width=248)
-        rail.pack(side="left", fill="y")
-        rail.pack_propagate(False)
+        self._nav_shell, rail = self._floating_plane(stage, fill=RAIL, radius=28, lift=6, border=RAIL_EDGE)
+        self._work_shell, glass = self._floating_plane(stage, fill=GLASS, radius=PLANE_RADIUS, lift=5, border=GLASS_EDGE)
+        self._light_catch(rail, padx=22)
         self._build_rail(rail)
+        self._light_catch(glass, padx=26)
 
-        main = ctk.CTkFrame(outer, fg_color=BG, corner_radius=0)
-        main.pack(side="left", fill="both", expand=True, padx=28, pady=24)
+        main = ctk.CTkFrame(glass, fg_color=GLASS, corner_radius=0)
+        main.pack(fill="both", expand=True, padx=22, pady=(2, 20))
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(0, weight=1)
         self._main = main
 
-        self.sort_view = ctk.CTkFrame(main, fg_color=BG, corner_radius=0)
+        self.sort_view = ctk.CTkFrame(main, fg_color=GLASS, corner_radius=0)
         self.sort_view.grid(row=0, column=0, sticky="nsew")
         self.sort_view.grid_columnconfigure(0, weight=1)
         self.sort_view.grid_rowconfigure(7, weight=1)
         self._build_group_view(main)
         self._build_new_view(main)
         self._build_sort_view()
+        stage.bind("<Configure>", self._layout_planes)
+
+    def _light_catch(self, parent: ctk.CTkFrame, *, padx: int) -> None:
+        """Short mint edge where light would catch the front of a glass plane."""
+        ctk.CTkFrame(parent, fg_color=MINT, width=36, height=4, corner_radius=2).pack(anchor="w", padx=padx, pady=(12, 0))
+
+    def _floating_plane(
+        self,
+        parent: ctk.CTkFrame,
+        *,
+        fill: str,
+        radius: int,
+        lift: int,
+        border: str,
+    ) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
+        shell = ctk.CTkFrame(parent, fg_color=SPACE, corner_radius=0)
+        shadow = ctk.CTkFrame(shell, fg_color=SHADOW, corner_radius=radius)
+        body = ctk.CTkFrame(shell, fg_color=fill, corner_radius=radius, border_width=1, border_color=border)
+        body.pack_propagate(False)
+        shell._spatial = (shadow, body, lift)  # noqa: SLF001 - plane depth for layout
+        shell.bind("<Configure>", lambda _event, plane=shell: self._fit_plane(plane))
+        return shell, body
+
+    def _widget_scale(self) -> float:
+        try:
+            scale = float(ctk.ScalingTracker.get_widget_scaling(self.root))
+        except Exception:
+            return 1.0
+        return scale if scale > 0 else 1.0
+
+    def _place_sized(self, widget: ctk.CTkFrame, x: float, y: float, width: float, height: float) -> None:
+        """Size a frame, then place it. CustomTkinter rejects width and height on place()."""
+        widget.configure(width=max(1, int(width)), height=max(1, int(height)))
+        widget.place(x=int(x), y=int(y))
+
+    def _fit_plane(self, shell: ctk.CTkFrame, width: float | None = None, height: float | None = None) -> None:
+        shadow, body, lift = shell._spatial  # noqa: SLF001
+        if width is None or height is None:
+            scale = self._widget_scale()
+            width = shell.winfo_width() / scale
+            height = shell.winfo_height() / scale
+        if width < 8 or height < 8:
+            return
+        # A short drop only. A second full copy of the panel reads as a broken extra edge.
+        self._place_sized(shadow, 2, lift, max(1, width - 8), max(1, height - lift))
+        self._place_sized(body, 0, 0, max(1, width - 2), max(1, height - lift - 1))
+
+    def _layout_planes(self, _event=None) -> None:
+        stage = getattr(self, "_stage", None)
+        if stage is None:
+            return
+        scale = self._widget_scale()
+        width = stage.winfo_width() / scale
+        height = stage.winfo_height() / scale
+        if width < 80 or height < 80:
+            return
+        nav_y = STAGE_MARGIN + 10
+        work_x = STAGE_MARGIN + NAV_WIDTH + PLANE_GAP
+        nav_h = max(10, height - nav_y - STAGE_MARGIN)
+        work_w = max(10, width - work_x - STAGE_MARGIN)
+        work_h = max(10, height - STAGE_MARGIN * 2 - 4)
+        self._place_sized(self._nav_shell, STAGE_MARGIN, nav_y, NAV_WIDTH, nav_h)
+        self._place_sized(self._work_shell, work_x, STAGE_MARGIN, work_w, work_h)
+        self._fit_plane(self._nav_shell, NAV_WIDTH, nav_h)
+        self._fit_plane(self._work_shell, work_w, work_h)
+
+    def _raised_sheet(self, parent: ctk.CTkFrame, *, radius: int = 22) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
+        """A nearer white sheet sitting on the workspace glass."""
+        shell = ctk.CTkFrame(parent, fg_color=GLASS, corner_radius=0)
+        card = ctk.CTkFrame(shell, fg_color=WHITE, corner_radius=radius, border_width=1, border_color="#E5F3FB")
+        card.pack(fill="both", expand=True)
+        return shell, card
 
     def _build_sort_view(self) -> None:
         heading = ctk.CTkFrame(self.sort_view, fg_color=BG, corner_radius=0)
@@ -193,7 +284,7 @@ class SorterApp:
             anchor="w",
             justify="left",
             wraplength=540,
-        ).grid(row=1, column=0, sticky="ew", pady=(4, 16))
+        ).grid(row=1, column=0, sticky="ew", pady=(2, 8))
 
         self.input_entry, self.input_button = self._field_row(
             self.sort_view, 2, "Mixed photos", "Folder with every shot from the event", self.input_var, self._pick_input, "folder"
@@ -221,10 +312,10 @@ class SorterApp:
             text_color=MUTED,
             font=("Segoe UI", 12),
             anchor="w",
-        ).grid(row=5, column=0, sticky="w", pady=(2, 12))
+        ).grid(row=5, column=0, sticky="w", pady=(2, 6))
 
         actions = ctk.CTkFrame(self.sort_view, fg_color=BG, corner_radius=0)
-        actions.grid(row=6, column=0, sticky="w", pady=(0, 16))
+        actions.grid(row=6, column=0, sticky="w", pady=(0, 8))
         self.sort_button = self._button(actions, "Sort photos", self._start, primary=True, icon="sort")
         self.sort_button.pack(side="left")
         self.pause_button = self._button(actions, "Pause", self._toggle_pause, primary=False, icon="pause")
@@ -234,8 +325,8 @@ class SorterApp:
         self.open_button = self._button(actions, "Open folder", self._open_output, primary=False, icon="open")
         self.open_button.pack(side="left", padx=(10, 0))
 
-        panel = ctk.CTkFrame(self.sort_view, fg_color=SURFACE, corner_radius=16, border_width=1, border_color=LINE)
-        panel.grid(row=7, column=0, sticky="nsew")
+        sheet, panel = self._raised_sheet(self.sort_view)
+        sheet.grid(row=7, column=0, sticky="nsew")
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(2, weight=1)
         ctk.CTkLabel(
@@ -244,9 +335,10 @@ class SorterApp:
             text_color=INK,
             font=("Segoe UI Semibold", 13),
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", padx=16, pady=(14, 0))
-        status_row = ctk.CTkFrame(panel, fg_color=SURFACE, corner_radius=0)
-        status_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(8, 8))
+            height=22,
+        ).grid(row=0, column=0, sticky="w", padx=16, pady=(10, 0))
+        status_row = ctk.CTkFrame(panel, fg_color=WHITE, corner_radius=0)
+        status_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(4, 6))
         self.status_dot = ctk.CTkFrame(status_row, width=10, height=10, corner_radius=5, fg_color=MUTED)
         self.status_dot.pack(side="left", padx=(2, 8))
         self.status_dot.pack_propagate(False)
@@ -265,9 +357,10 @@ class SorterApp:
             fg_color=FIELD,
             text_color=INK,
             font=("Segoe UI", 13),
-            corner_radius=12,
+            corner_radius=16,
             border_width=0,
             wrap="word",
+            height=96,
             activate_scrollbars=True,
             scrollbar_button_color="#C5E4F4",
             scrollbar_button_hover_color=BLUE,
@@ -304,33 +397,41 @@ class SorterApp:
         self.new_group_button = ctk.CTkButton(
             rail,
             text="  New group",
-            image=self._icons["plus"],
+            image=self._icons["plus-dark"],
             compound="left",
             anchor="w",
-            height=36,
-            corner_radius=10,
-            fg_color="#0D5CA0",
-            hover_color="#0A4E88",
-            text_color=WHITE,
+            height=38,
+            corner_radius=14,
+            fg_color=WHITE,
+            hover_color=MINT,
+            text_color=BLUE,
             font=("Segoe UI", 14),
             hover=False,
             command=self._show_new_group,
         )
-        self.new_group_button.pack(fill="x", padx=12, pady=(0, 8))
-        self._wire_hover(self.new_group_button, rest="#0D5CA0", hover=MINT, mint_border=False, text_rest=WHITE, text_hover=BLUE_DEEP)
-        self.new_group_button.bind("<Enter>", lambda _event: self.new_group_button.configure(image=self._icons["plus-dark"]), add="+")
-        self.new_group_button.bind("<Leave>", lambda _event: self.new_group_button.configure(image=self._icons["plus"]), add="+")
+        self.new_group_button.pack(fill="x", padx=14, pady=(0, 8))
+        self._wire_hover(self.new_group_button, rest=WHITE, hover=MINT, mint_border=False, text_rest=BLUE, text_hover=BLUE_DEEP)
         groups = ctk.CTkScrollableFrame(
             rail,
             fg_color=RAIL,
             corner_radius=0,
-            scrollbar_button_color="#4B9AD8",
-            scrollbar_button_hover_color=MINT,
+            scrollbar_fg_color="#0C5A9A",
+            scrollbar_button_color=MINT,
+            scrollbar_button_hover_color=WHITE,
         )
-        groups.pack(fill="both", expand=True, padx=6, pady=(0, 12))
+        # Keep the list and its scrollbar above the rounded bottom edge.
+        groups.pack(fill="both", expand=True, padx=(8, 6), pady=(0, 28))
+        groups._scrollbar.configure(width=18)  # noqa: SLF001 - wider thumb is easier to drag
+        groups._scrollbar._minimum_pixel_length = 48  # noqa: SLF001
         self._groups_frame = groups
+        self._hook_group_wheel(groups)
+        self._hook_group_wheel(groups._parent_canvas)  # noqa: SLF001
+        self._hook_group_wheel(groups._scrollbar)  # noqa: SLF001
         for name in self._group_names():
             self._insert_group_button(name)
+        spacer = ctk.CTkFrame(groups, fg_color=RAIL, height=12, corner_radius=0)
+        spacer.pack(fill="x")
+        spacer.pack_propagate(False)
 
     def _build_group_view(self, parent: ctk.CTkFrame) -> None:
         view = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
@@ -369,19 +470,23 @@ class SorterApp:
         )
         self.group_hint.grid(row=2, column=0, sticky="ew", pady=(0, 12))
 
+        sheet, card = self._raised_sheet(view)
+        sheet.grid(row=3, column=0, sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        card.grid_rowconfigure(0, weight=1)
         self.prompt_box = ctk.CTkTextbox(
-            view,
-            fg_color=SURFACE,
+            card,
+            fg_color=FIELD,
             text_color=INK,
             font=("Segoe UI", 15),
             corner_radius=16,
             border_width=1,
-            border_color=LINE,
+            border_color=FIELD,
             wrap="word",
         )
-        self.prompt_box.grid(row=3, column=0, sticky="nsew")
+        self.prompt_box.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.prompt_box.bind("<FocusIn>", lambda _event: self.prompt_box.configure(border_color=BLUE))
-        self.prompt_box.bind("<FocusOut>", lambda _event: self.prompt_box.configure(border_color=LINE))
+        self.prompt_box.bind("<FocusOut>", lambda _event: self.prompt_box.configure(border_color=FIELD))
 
         foot = ctk.CTkFrame(view, fg_color=BG, corner_radius=0)
         foot.grid(row=4, column=0, sticky="ew", pady=(14, 0))
@@ -434,8 +539,8 @@ class SorterApp:
         self.new_name_entry = ctk.CTkEntry(
             view,
             textvariable=self.new_name_var,
-            height=42,
-            corner_radius=12,
+            height=40,
+            corner_radius=14,
             fg_color=FIELD,
             border_color=LINE,
             border_width=1,
@@ -450,20 +555,23 @@ class SorterApp:
         ctk.CTkLabel(view, text="Description", text_color=INK, font=("Segoe UI", 14, "bold"), anchor="w").grid(
             row=5, column=0, sticky="nw"
         )
+        sheet, card = self._raised_sheet(view)
+        sheet.grid(row=6, column=0, sticky="nsew", pady=(6, 0))
+        card.grid_columnconfigure(0, weight=1)
+        card.grid_rowconfigure(0, weight=1)
         self.new_prompt = ctk.CTkTextbox(
-            view,
-            fg_color=SURFACE,
+            card,
+            fg_color=FIELD,
             text_color=INK,
             font=("Segoe UI", 15),
             corner_radius=16,
             border_width=1,
-            border_color=LINE,
+            border_color=FIELD,
             wrap="word",
-            height=140,
         )
-        self.new_prompt.grid(row=6, column=0, sticky="nsew", pady=(6, 0))
+        self.new_prompt.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.new_prompt.bind("<FocusIn>", lambda _event: self.new_prompt.configure(border_color=BLUE))
-        self.new_prompt.bind("<FocusOut>", lambda _event: self.new_prompt.configure(border_color=LINE))
+        self.new_prompt.bind("<FocusOut>", lambda _event: self.new_prompt.configure(border_color=FIELD))
 
         foot = ctk.CTkFrame(view, fg_color=BG, corner_radius=0)
         foot.grid(row=7, column=0, sticky="ew", pady=(14, 0))
@@ -487,9 +595,9 @@ class SorterApp:
             image=image,
             compound="left",
             anchor="w",
-            height=36,
-            corner_radius=10,
-            fg_color=RAIL,
+            height=38,
+            corner_radius=14,
+            fg_color=CHIP,
             hover_color="#0D5CA0",
             text_color=WHITE,
             font=("Segoe UI", 14),
@@ -498,11 +606,30 @@ class SorterApp:
         )
         review = self._group_buttons.get(self.settings.review_label)
         if review is not None and name != self.settings.review_label:
-            button.pack(fill="x", pady=2, before=review)
+            button.pack(fill="x", padx=4, pady=2, before=review)
         else:
-            button.pack(fill="x", pady=2)
-        self._wire_hover(button, rest=RAIL, hover="#0D5CA0", mint_border=False)
+            button.pack(fill="x", padx=4, pady=2)
+        self._wire_hover(button, rest=CHIP, hover="#0D5CA0", mint_border=False)
+        self._hook_group_wheel(button)
         self._group_buttons[name] = button
+
+    def _hook_group_wheel(self, widget) -> None:
+        widget.bind("<MouseWheel>", self._scroll_groups, add="+")
+        canvas = getattr(widget, "_canvas", None)
+        if canvas is not None:
+            canvas.bind("<MouseWheel>", self._scroll_groups, add="+")
+
+    def _scroll_groups(self, event) -> str:
+        """Move about one group row per wheel notch, including over the buttons."""
+        frame = getattr(self, "_groups_frame", None)
+        if frame is None:
+            return "break"
+        canvas = frame._parent_canvas  # noqa: SLF001
+        if canvas.yview() == (0.0, 1.0):
+            return "break"
+        direction = -1 if event.delta > 0 else 1
+        canvas.yview_scroll(direction * 64, "units")
+        return "break"
 
     def _reveal_group(self, name: str) -> None:
         canvas = getattr(self._groups_frame, "_parent_canvas", None)
@@ -522,13 +649,13 @@ class SorterApp:
         icon_name: str,
     ) -> tuple[ctk.CTkEntry, ctk.CTkButton]:
         block = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
-        block.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        block.grid(row=row, column=0, sticky="ew", pady=(0, 8))
         block.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(block, text=title, text_color=INK, font=("Segoe UI", 14, "bold"), anchor="w").grid(
             row=0, column=0, sticky="w"
         )
         ctk.CTkLabel(block, text=hint, text_color=MUTED, font=("Segoe UI", 12), anchor="w").grid(
-            row=1, column=0, sticky="w", pady=(1, 6)
+            row=1, column=0, sticky="w", pady=(0, 4)
         )
         row_frame = ctk.CTkFrame(block, fg_color=BG, corner_radius=0)
         row_frame.grid(row=2, column=0, sticky="ew")
@@ -536,8 +663,8 @@ class SorterApp:
         entry = ctk.CTkEntry(
             row_frame,
             textvariable=variable,
-            height=42,
-            corner_radius=12,
+            height=40,
+            corner_radius=14,
             fg_color=FIELD,
             border_color=LINE,
             border_width=1,
@@ -555,9 +682,9 @@ class SorterApp:
             image=self._icons[icon_name],
             compound="left",
             command=command,
-            width=110,
-            height=42,
-            corner_radius=12,
+            width=118,
+            height=40,
+            corner_radius=14,
             fg_color=SURFACE,
             hover_color=MINT_SOFT,
             border_width=1,
@@ -580,10 +707,12 @@ class SorterApp:
                 image=self._icons[icon],
                 compound="left",
                 command=command,
-                height=42,
-                corner_radius=12,
+                height=44,
+                corner_radius=16,
                 fg_color=BLUE,
                 hover_color=BLUE_HOVER,
+                border_width=2,
+                border_color=MINT,
                 text_color=WHITE,
                 text_color_disabled=DISABLED_TEXT,
                 font=("Segoe UI", 14, "bold"),
@@ -597,8 +726,8 @@ class SorterApp:
             image=self._icons[icon],
             compound="left",
             command=command,
-            height=42,
-            corner_radius=12,
+            height=44,
+            corner_radius=16,
             fg_color=SURFACE,
             hover_color=MINT_SOFT,
             border_width=1,
@@ -716,8 +845,8 @@ class SorterApp:
         self.root.update_idletasks()
         left, top, work_w, work_h = self._work_area()
         scale = self._window_scale()
-        width = min(980, max(720, int((work_w - 48) / scale)))
-        height = min(640, max(520, int((work_h - 96) / scale)))
+        width = min(1080, max(760, int((work_w - 48) / scale)))
+        height = min(740, max(580, int((work_h - 96) / scale)))
         self.root.geometry(f"{width}x{height}")
         self.root.update_idletasks()
         outer_w, outer_h = self._outer_size()
@@ -836,9 +965,15 @@ class SorterApp:
                     border_color=DISABLED,
                 )
             return
+        if button is getattr(self, "open_button", None):
+            if enabled:
+                button.configure(fg_color=SURFACE, text_color=BLUE, image=self._icons["open"], border_color=LINE)
+            else:
+                button.configure(fg_color=DISABLED, text_color=DISABLED_TEXT, image=self._icons["open-off"], border_color=DISABLED)
+            return
         if button is getattr(self, "sort_button", None):
             if enabled:
-                button.configure(fg_color=BLUE, text_color=WHITE, image=self._icons["sort"])
+                button.configure(fg_color=BLUE, text_color=WHITE, image=self._icons["sort"], border_color=MINT, border_width=2)
             else:
                 button.configure(fg_color=DISABLED, text_color=DISABLED_TEXT, image=self._icons["sort-off"], border_color=DISABLED)
             return
@@ -880,7 +1015,7 @@ class SorterApp:
                 self._group_icon_images[name] = image
                 button.configure(image=image)
             else:
-                button.configure(fg_color=RAIL, text_color=WHITE, hover_color="#0D5CA0")
+                button.configure(fg_color=CHIP, text_color=WHITE, hover_color="#0D5CA0")
                 glyph = GROUP_ICONS.get(name, "photos")
                 image = ctk_icon(glyph, WHITE, 15)
                 self._group_icon_images[name] = image
@@ -928,7 +1063,7 @@ class SorterApp:
         if self._screen == "new":
             self.new_group_button.configure(fg_color=MINT, text_color=BLUE_DEEP, image=self._icons["plus-dark"])
         else:
-            self.new_group_button.configure(fg_color="#0D5CA0", text_color=WHITE, image=self._icons["plus"])
+            self.new_group_button.configure(fg_color=WHITE, text_color=BLUE, image=self._icons["plus-dark"])
 
     def _show_group(self, name: str) -> None:
         self._screen = "group"

@@ -12,6 +12,11 @@ import yaml
 class Category:
     name: str
     prompt: str
+    extra_prompts: tuple[str, ...] = ()
+
+    @property
+    def all_prompts(self) -> list[str]:
+        return [self.prompt, *self.extra_prompts]
 
 
 @dataclass(frozen=True)
@@ -24,6 +29,17 @@ class Settings:
     @property
     def prompts(self) -> list[str]:
         return [category.prompt for category in self.categories]
+
+    @property
+    def flat_prompts(self) -> tuple[list[str], list[int]]:
+        """Every prompt (main plus extra) and the index of the category each one belongs to."""
+        texts: list[str] = []
+        owners: list[int] = []
+        for index, category in enumerate(self.categories):
+            for text in category.all_prompts:
+                texts.append(text)
+                owners.append(index)
+        return texts, owners
 
     @property
     def names(self) -> list[str]:
@@ -67,8 +83,12 @@ def load_settings(path: Path) -> Settings:
             raise ValueError(f"{path} repeats the category {name!r}.")
         if name.casefold() == review_label.casefold():
             raise ValueError(f"{path} uses {review_label!r} both as a category and as the review folder.")
+        extras_raw = entry.get("extra_prompts") or []
+        if not isinstance(extras_raw, list):
+            raise ValueError(f"{path} extra_prompts for {name!r} must be a list.")
+        extras = tuple(str(item).strip() for item in extras_raw if str(item).strip())
         seen.add(name.casefold())
-        categories.append(Category(name=name, prompt=prompt))
+        categories.append(Category(name=name, prompt=prompt, extra_prompts=extras))
 
     return Settings(
         model=model,

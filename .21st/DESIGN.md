@@ -8,8 +8,8 @@ Generated from project sources at 2026-10-06T12:06:22.863Z.
 - Name: imgcategoring
 - Product type: Unknown
 - Stack: Unknown
-- Color mode: unknown
-- Density: unknown
+- Color mode: light
+- Density: comfortable
 
 ## Sources
 
@@ -29,13 +29,17 @@ Generated from project sources at 2026-10-06T12:06:22.863Z.
 
 ### Must
 
-- None recorded
+- Stay on CustomTkinter
+- Keep blue #106EBE and mint #0FFCBE
+- Leave original photos in place
 
 ### Avoid
 
-- None recorded
+- Replacing the sidebar workflow
+- Migrating the window to a web framework
 
 ## Decisions
 
-- None recorded
+- The desktop window keeps the blue and mint palette and the existing sort, pause, and group flows.
+- The window is a light spatial layout: a sky field with two floating glass planes, the sidebar in front-left and the workspace closer to the viewer, with raised sheets for activity and descriptions.
 
