@@ -1,8 +1,10 @@
-# Photo groups for the Bengaluru Tech Summit (event 4) drone/360 shots.
+﻿# Photo groups for the Bengaluru Tech Summit shoots (events 3 and 4): pre-event
+# venue setup, drone/aerial shots, expo floor, halls, dining and restrooms.
 # A photo is copied into every group whose score is at least min_score.
 # Each group has one main `prompt` and optional `extra_prompts`. The group
 # score is the best score among its prompts, so list different looks of the
-# same scene (day/night, close/far) as separate prompts instead of one long one.
+# same scene (day/night, close/far, empty/busy) as separate prompts instead of
+# one long one.
 # If nothing reaches min_score, the photo goes to the review folder.
 # Scores are SigLIP probabilities (0 to 1).
 #
@@ -19,19 +21,43 @@ categories:
     extra_prompts:
       - a colorful entrance arch with a red carpet at a conference
       - a large white dome tent and national flags in front of an exhibition venue
+      - a modern pavilion building with a red carpet walkway outside under a blue sky
+      - an open air parking lot and a fountain outside an event venue
+      - a modern grey building with green panels and visitors walking on a red carpet outdoors
+      - a covered entrance canopy with an orange and red roof and a long walkway
+      - a security fence and barricade queue lane outside the venue gate
   - name: Aerial View
     prompt: an aerial drone photo of a large venue with white tents surrounded by trees
     extra_prompts:
       - a bird's eye view of a city park with an event site
       - an aerial drone photo of a white dome and tents in a garden with visitors walking
+      - a drone photo of a huge white exhibition tent with a grey roof on open ground
+      - a top-down drone view of a red carpet area next to a white tent
+  - name: Site & Walkways
+    prompt: a black covered walkway with a mesh roof beside a white tent on a construction site
+    extra_prompts:
+      - a view from a rooftop of a temporary venue wall with a yellow railing and a red carpet
+      - bare orange soil and a tall black fence behind a temporary building
+      - a narrow passage between a tall fence and white tent walls
+      - a red carpeted enclosure surrounded by a wall on bare ground
   - name: Palace
     prompt: a photo of a historic castle-style palace with towers and a lawn
     extra_prompts:
       - a heritage palace building with ivy covered walls
+  - name: Registration
+    prompt: a registration area with long white counters, queue stanchions and visitors checking in
+    extra_prompts:
+      - delegates queueing at registration desks under a tent roof
+      - a security check area with a baggage scanner at the entry of an expo
+      - a reception counter with a black sign reading REGISTRATION
+      - white partition booths and counters with laptops where staff check in visitors
+      - an entry gate inside a tent with ropes and a metal detector
   - name: Main Hall Setup
     prompt: a large conference hall with a big stage and rows of empty chairs and round tables set up
     extra_prompts:
       - a ballroom stage with LED screens and empty chairs before an event
+      - a hall with red patterned carpet and rows of white chairs facing a stage with a colorful backdrop
+      - white sofas arranged on a red carpet in a dark hall with a black ceiling
   - name: Main Hall Crowd
     prompt: a conference hall full of people seated at round tables in front of a stage
     extra_prompts:
@@ -46,17 +72,29 @@ categories:
       - a top-down view of exhibition stalls with monitors and white partition walls
       - an expo aisle with a red carpet and company booths on both sides
       - a close view of an exhibition stall with banners and a display
+      - an empty white exhibition stall with a red fascia board
+      - the grey ceiling of a very large white tent hall
   - name: Lounge & Corridor
     prompt: a hall with purple carpet and a few people walking around, lounge area
     extra_prompts:
       - a walkway corridor between partition walls at an expo
-  - name: Catering
+  - name: Dining & Catering
     prompt: a photo of a lunch buffet in a hall with a grey carpet and white pillars
     extra_prompts:
       - a catering area with black tables
       - buffet tables with black cloths and chafing dishes in a hall
       - long tables covered with black tablecloth and silver serving dishes on grey carpet
+      - round dining tables with white tablecloths and white chair covers in a hall
+      - a large hall with red carpet, round tables and framed pictures on the walls
+      - a lounge with orange pillars and round tables set with white cloths
+      - a covered open-air food court with tables and a FOOD COURT sign
   - name: Dome Stage
     prompt: a stage with screens inside a dome tent with people and colorful bean bags
     extra_prompts:
       - the interior of a geodesic dome with purple lights
+  - name: Restrooms
+    prompt: a clean public restroom with washbasins, mirrors and toilet cubicle doors
+    extra_prompts:
+      - a row of urinals on a wall in a washroom
+      - a long counter with sinks and mirrors in a toilet block
+      - a white toilet cubicle with a grey door in a bathroom
