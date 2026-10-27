@@ -1,5 +1,5 @@
-﻿# Photo groups for the Bengaluru Tech Summit shoots (events 3 and 4): pre-event
-# venue setup, drone/aerial shots, expo floor, halls, dining and restrooms.
+﻿# Photo groups for the AKS venue shoots (events 2, 3 and 4): pre-event venue
+# setup, drone/aerial shots, expo floor, halls, stage shows, dining, restrooms.
 # A photo is copied into every group whose score is at least min_score.
 # Each group has one main `prompt` and optional `extra_prompts`. The group
 # score is the best score among its prompts, so list different looks of the
@@ -12,7 +12,7 @@
 # colour, table cloths, tent roof) work far better than generic words.
 
 model: google/siglip-base-patch16-224
-min_score: 0.10
+min_score: 0.05
 review_label: Needs review
 
 categories:
@@ -26,6 +26,19 @@ categories:
       - a modern grey building with green panels and visitors walking on a red carpet outdoors
       - a covered entrance canopy with an orange and red roof and a long walkway
       - a security fence and barricade queue lane outside the venue gate
+      - a long tented walkway with metal barricades leading to the venue entrance
+      - turnstile entry gates and a security check at the entrance of the venue
+      - a hall exterior with a colorful letter sculpture and a signboard
+      - a paved outdoor road with trees and a colorful event signboard in daylight
+      - a tent canopy walkway with railings and trees leading to a venue
+      - a bare outdoor plaza with a circular ring and trees in front of a building
+      - a low white building with a canopy and a banner at an event venue
+      - a tall branded poster of two people at the venue entrance
+      - an empty paved road in front of a large grey exhibition building with trees
+      - a large plain white wall with a doorway under a canopy outdoors
+      - a pavement with a metal barricade fence and a security guard outside the venue
+      - white tables and blue dustbins outside near a tree line
+      - a modern lobby with a polished floor and a reception counter
   - name: Aerial View
     prompt: an aerial drone photo of a large venue with white tents surrounded by trees
     extra_prompts:
@@ -58,6 +71,9 @@ categories:
       - a ballroom stage with LED screens and empty chairs before an event
       - a hall with red patterned carpet and rows of white chairs facing a stage with a colorful backdrop
       - white sofas arranged on a red carpet in a dark hall with a black ceiling
+      - rows and rows of white chairs in a huge hall under a steel truss roof
+      - thousands of white chairs facing a small stage in a giant hall
+      - round tables with chairs set on a red carpet in a big hall with a steel roof
   - name: Main Hall Crowd
     prompt: a conference hall full of people seated at round tables in front of a stage
     extra_prompts:
@@ -78,6 +94,9 @@ categories:
     prompt: a hall with purple carpet and a few people walking around, lounge area
     extra_prompts:
       - a walkway corridor between partition walls at an expo
+      - a bright lobby with a glossy floor and a few people
+      - a reception table with a black cloth in a hall lobby
+      - a glossy lobby with green branded counters and a red rope barrier
   - name: Dining & Catering
     prompt: a photo of a lunch buffet in a hall with a grey carpet and white pillars
     extra_prompts:
@@ -88,13 +107,62 @@ categories:
       - a large hall with red carpet, round tables and framed pictures on the walls
       - a lounge with orange pillars and round tables set with white cloths
       - a covered open-air food court with tables and a FOOD COURT sign
+      - a refreshment table with a cloth and snack counters in a lobby
+      - pink-draped buffet tables in a dark hall
   - name: Dome Stage
     prompt: a stage with screens inside a dome tent with people and colorful bean bags
     extra_prompts:
       - the interior of a geodesic dome with purple lights
+  - name: Stage & Show
+    prompt: a stage show at night with purple and blue LED screens and bright concert lighting
+    extra_prompts:
+      - a glowing LED dance floor and a stage with colorful lights in a dark hall
+      - a futuristic stage backdrop with neon light effects and smoke
+      - a dark gala hall with round tables facing a lit stage with screens
+      - a stage with magenta pink LED screens and spotlights in a dark hall with round tables
+      - a night event hall with a lit stage and many round tables set for dinner
+      - a stage with a blue LED wall and spotlights in a dark hall
+      - a big stage under construction in a large hall with a green backdrop and a red carpet
+      - an empty stage with a large Herbalife logo wall and work lights on
+      - a neon lit art installation stage with green and orange abstract graphics
+      - a stage with a tunnel shaped glowing backdrop and a performer
+  - name: Photo Booth & Guests
+    prompt: guests posing for photos at a colorful photo booth arch
+    extra_prompts:
+      - a group of smiling people posing together for a group photo on a stage
+      - guests in formal clothes standing and chatting at an event
+      - people walking through a glowing holographic arch at the entrance
+      - visitors taking selfies and posing at an event
+  - name: Decor & Branding
+    prompt: a decorative installation with flowers, glowing props and a branded sign
+    extra_prompts:
+      - a glowing LED tunnel entrance in a dark hall
+      - a tall printed standee or branded signboard at an event
+      - a large branded cake-shaped stage prop with stairs
+  - name: Empty Hall
+    prompt: a vast empty exhibition hall with a bare floor and a steel truss roof
+    extra_prompts:
+      - metal crowd barricades lined up on the floor of a big empty hall
+      - a very large empty warehouse-like hall with white walls and a long white counter
+      - a huge empty hall with a polished concrete floor and a high steel roof
+      - a big white room with barricade railings in front of a doorway
+      - a gigantic empty hall with a few signboards and a white wall
+  - name: Cabins & Backstage
+    prompt: white partition cabins and small offices built inside a large hall
+    extra_prompts:
+      - a backstage area with black drapes, road cases and a few tables
+      - a control room desk with monitors and laptops inside a temporary cabin
+      - a round table with a black cloth in a partitioned room
+      - white wall panels forming rooms in a big hall with black chairs and tables
+      - a small white room with a counter and a window built inside a hall
+      - a tall white temporary wall with a door in a large hall
+      - black high tables with stools next to white walls
+      - a glass fronted cabin with lights inside a big hall
   - name: Restrooms
     prompt: a clean public restroom with washbasins, mirrors and toilet cubicle doors
     extra_prompts:
       - a row of urinals on a wall in a washroom
       - a long counter with sinks and mirrors in a toilet block
       - a white toilet cubicle with a grey door in a bathroom
+      - a row of colorful portable toilet cabins outdoors
+
