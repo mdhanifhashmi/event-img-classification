@@ -10,7 +10,7 @@ Sort a mixed folder of event photos into named groups (Stage, Decoration, Guests
 - About 5 GB free disk for Python, the model, and the copied photos
 - Internet once, to install libraries and download the model (about 400 MB)
 
-A GPU is optional. The commands below install the CPU build of PyTorch.
+A GPU is optional. `Setup.bat` asks whether to install the CPU or an NVIDIA CUDA build of PyTorch (it recommends one based on your PC). Run it again any time to switch. The commands below install the CPU build by hand.
 
 ## Setup
 

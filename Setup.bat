@@ -20,10 +20,49 @@ if not exist ".venv\Scripts\python.exe" (
     if errorlevel 1 goto :failed
 )
 
-echo Installing PyTorch ^(CPU build^)...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+rem Look for an NVIDIA graphics card so the default choice fits this PC.
+set "DEFAULT=1"
+set "GPUNAME="
+where nvidia-smi >nul 2>&1
+if not errorlevel 1 (
+    for /f "usebackq delims=" %%G in (`nvidia-smi --query-gpu=name --format=csv,noheader 2^>nul`) do (
+        if not defined GPUNAME set "GPUNAME=%%G"
+    )
+)
+if defined GPUNAME set "DEFAULT=2"
+
+echo Which PyTorch build should be installed?
+echo   1  CPU only        works on every PC, smaller download, slower
+echo   2  NVIDIA GPU      CUDA 12.6, for GTX 10 series up to RTX 40 series
+echo   3  NVIDIA GPU      CUDA 12.8, for RTX 50 series
+echo.
+if defined GPUNAME echo Detected: %GPUNAME%
+if not defined GPUNAME echo No NVIDIA graphics card was detected, so the CPU build is recommended.
+echo Press a number, or wait 20 seconds for the recommended choice ^(%DEFAULT%^).
+choice /c 123 /n /t 20 /d %DEFAULT% /m "Your choice: "
+set "PICK=%errorlevel%"
+echo.
+
+set "TORCH_INDEX=cpu"
+if "%PICK%"=="2" set "TORCH_INDEX=cu126"
+if "%PICK%"=="3" set "TORCH_INDEX=cu128"
+
+echo Installing PyTorch ^(%TORCH_INDEX% build^)...
+".venv\Scripts\python.exe" -m pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/%TORCH_INDEX%
 if errorlevel 1 goto :failed
+
+if not "%TORCH_INDEX%"=="cpu" (
+    ".venv\Scripts\python.exe" -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo Note: the GPU build is installed, but no usable NVIDIA GPU was found.
+        echo Update your NVIDIA driver, or run Setup.bat again and choose 1 for CPU.
+    ) else (
+        echo GPU check passed. Choose it in Settings inside the app.
+    )
+)
 
 echo Installing the other libraries...
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt

@@ -1,5 +1,5 @@
-# Install the CPU build of PyTorch before this file. See README.md.
-# A plain "pip install torch" on Windows can pull a much larger CUDA build.
+# Setup.bat installs PyTorch (CPU or CUDA build) before this file. See README.md.
+# A plain "pip install torch" on Windows pulls the default build, which may not match your PC.
 torch>=2.2.0
 torchvision>=0.17.0
 transformers>=4.46.0
