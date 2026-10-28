@@ -200,7 +200,9 @@ def _search(output_dir: Path, query: str) -> list[tuple[str, float]]:
     cache = load_cache(output_dir)
     if cache is None or len(cache.embeddings) == 0:
         raise RuntimeError("This folder has no embedding cache. Sort the photos again so search can score them.")
-    device = pick_device("auto")
+    from src.devices import load_choice
+
+    device = pick_device(load_choice())
     backend = _load_backend(cache.model, str(device))
     text_embeds = embed_texts(backend, [query])
     scores = sigmoid_scores(cache.embeddings, text_embeds, backend.logit_scale, backend.logit_bias).reshape(-1)

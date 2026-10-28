@@ -21,6 +21,12 @@ def pick_device(requested: str) -> torch.device:
         if torch.cuda.is_available():
             return torch.device("cuda")
         return torch.device("cpu")
+    if requested.startswith("cuda"):
+        index = int(requested.partition(":")[2] or 0)
+        if not torch.cuda.is_available() or index >= torch.cuda.device_count():
+            raise RuntimeError(
+                f"The chosen GPU ({requested}) is not available. Pick another in Settings, or use the CPU."
+            )
     return torch.device(requested)
 
 

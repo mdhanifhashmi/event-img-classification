@@ -71,6 +71,14 @@ def draw_icon(name: str, color: str, size: int = 20) -> Image.Image:
         draw.rounded_rectangle((x0 + 2, y0 + 2, x1 - 2, y1 - 2), radius=3, fill=color)
     elif name == "back":
         _line(draw, [(mid_x + 3, y0 + 2), (x0 + 2, mid_y), (mid_x + 3, y1 - 2)], color, stroke)
+    elif name == "chip":
+        draw.rounded_rectangle((x0 + 3, y0 + 3, x1 - 3, y1 - 3), radius=3, **_pen(color, stroke))
+        draw.rectangle((mid_x - 2, mid_y - 2, mid_x + 2, mid_y + 2), fill=color)
+        for pos in (mid_x - 3, mid_x + 3):
+            _line(draw, [(pos, y0), (pos, y0 + 3)], color, stroke)
+            _line(draw, [(pos, y1 - 3), (pos, y1)], color, stroke)
+            _line(draw, [(x0, pos), (x0 + 3, pos)], color, stroke)
+            _line(draw, [(x1 - 3, pos), (x1, pos)], color, stroke)
     elif name == "photos":
         draw.rounded_rectangle((x0, y0 + 3, x1 - 3, y1), radius=3, **_pen(color, stroke))
         draw.rounded_rectangle((x0 + 3, y0, x1, y1 - 3), radius=3, **_pen(color, stroke))

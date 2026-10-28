@@ -25,6 +25,14 @@ DEFAULT_CONFIG = ROOT / "config" / "categories.yaml"
 LAST_RUN = ROOT / ".last_run.json"
 
 
+def _device_arg(value: str) -> str:
+    from src.devices import is_valid
+
+    if not is_valid(value):
+        raise argparse.ArgumentTypeError("use auto, cpu, cuda, or cuda:N")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Copy event photos into named groups using a local SigLIP model."
@@ -34,7 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Category YAML file")
     parser.add_argument("--threshold", type=float, default=None, help="Override min_score from the config")
     parser.add_argument("--batch-size", type=int, default=4, help="Photos embedded at once (lower uses less RAM)")
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument(
+        "--device",
+        type=_device_arg,
+        default="auto",
+        help="auto, cpu, cuda, or cuda:N for a specific GPU",
+    )
     parser.add_argument("--model", default=None, help="Override the SigLIP model id from the config")
     parser.add_argument(
         "--keep-existing",

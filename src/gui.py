@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from src import devices
 from src.icons import GROUP_ICONS, ctk_icon, write_app_icon
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +119,8 @@ class SorterApp:
             "save": ctk_icon("save", WHITE, 16),
             "save-off": ctk_icon("save", DISABLED_TEXT, 16),
             "back": ctk_icon("back", BLUE, 14),
+            "chip": ctk_icon("chip", WHITE, 16),
+            "chip-dark": ctk_icon("chip", BLUE_DEEP, 16),
             "photos": ctk_icon("photos", MINT, 20),
             "plus": ctk_icon("plus", WHITE, 14),
             "plus-dark": ctk_icon("plus", BLUE_DEEP, 14),
@@ -191,6 +194,7 @@ class SorterApp:
         self.sort_view.grid_rowconfigure(7, weight=1)
         self._build_group_view(main)
         self._build_new_view(main)
+        self._build_settings_view(main)
         self._build_sort_view()
         stage.bind("<Configure>", self._layout_planes)
 
@@ -411,6 +415,23 @@ class SorterApp:
         )
         self.new_group_button.pack(fill="x", padx=14, pady=(0, 8))
         self._wire_hover(self.new_group_button, rest=WHITE, hover=MINT, mint_border=False, text_rest=BLUE, text_hover=BLUE_DEEP)
+        self.settings_button = ctk.CTkButton(
+            rail,
+            text="  Settings",
+            image=self._icons["chip"],
+            compound="left",
+            anchor="w",
+            height=38,
+            corner_radius=14,
+            fg_color=CHIP,
+            hover_color="#0D5CA0",
+            text_color=WHITE,
+            font=("Segoe UI", 14),
+            hover=False,
+            command=self._show_settings,
+        )
+        self.settings_button.pack(side="bottom", fill="x", padx=14, pady=(0, 22))
+        self._wire_hover(self.settings_button, rest=CHIP, hover="#0D5CA0", mint_border=False)
         groups = ctk.CTkScrollableFrame(
             rail,
             fg_color=RAIL,
@@ -420,7 +441,7 @@ class SorterApp:
             scrollbar_button_hover_color=WHITE,
         )
         # Keep the list and its scrollbar above the rounded bottom edge.
-        groups.pack(fill="both", expand=True, padx=(8, 6), pady=(0, 28))
+        groups.pack(fill="both", expand=True, padx=(8, 6), pady=(0, 10))
         groups._scrollbar.configure(width=18)  # noqa: SLF001 - wider thumb is easier to drag
         groups._scrollbar._minimum_pixel_length = 48  # noqa: SLF001
         self._groups_frame = groups
@@ -584,6 +605,207 @@ class SorterApp:
             font=("Segoe UI", 12),
             anchor="w",
         ).pack(side="left", padx=(12, 0))
+
+    def _build_settings_view(self, parent: ctk.CTkFrame) -> None:
+        view = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
+        view.grid_columnconfigure(0, weight=1)
+        view.grid_rowconfigure(4, weight=1)
+        self.settings_view = view
+        self._detected: dict | None = None
+        self._detect_result: dict | None = None
+        self.device_var = tk.StringVar(value=devices.load_choice())
+
+        back = ctk.CTkButton(
+            view,
+            text=" Back to sort",
+            image=self._icons["back"],
+            compound="left",
+            command=self._show_sort,
+            fg_color="transparent",
+            hover_color=MINT_SOFT,
+            text_color=BLUE,
+            font=("Segoe UI", 13),
+            anchor="w",
+            height=32,
+            corner_radius=8,
+            hover=False,
+        )
+        back.grid(row=0, column=0, sticky="w")
+        self._wire_hover(back, rest="transparent", hover=MINT_SOFT, mint_border=False, text_rest=BLUE, text_hover=BLUE_DEEP)
+
+        ctk.CTkLabel(view, text="Settings", text_color=INK, font=("Segoe UI", 26), anchor="w").grid(
+            row=1, column=0, sticky="ew", pady=(10, 4)
+        )
+        ctk.CTkLabel(
+            view,
+            text="Choose the processor used to compare photos. A graphics card is usually much faster than the CPU.",
+            text_color=MUTED,
+            font=("Segoe UI", 13),
+            anchor="w",
+            justify="left",
+            wraplength=540,
+        ).grid(row=2, column=0, sticky="ew", pady=(0, 12))
+
+        head = ctk.CTkFrame(view, fg_color=BG, corner_radius=0)
+        head.grid(row=3, column=0, sticky="ew")
+        ctk.CTkLabel(head, text="Processor", text_color=INK, font=("Segoe UI", 14, "bold"), anchor="w").pack(side="left")
+        self.rescan_button = self._button(head, "Rescan", self._detect_devices, primary=False, icon="chip-dark")
+        self.rescan_button.configure(height=34, width=110)
+        self.rescan_button.pack(side="right")
+
+        sheet, card = self._raised_sheet(view)
+        sheet.grid(row=4, column=0, sticky="nsew", pady=(8, 0))
+        card.grid_columnconfigure(0, weight=1)
+        self._device_list = ctk.CTkFrame(card, fg_color=WHITE, corner_radius=0)
+        self._device_list.grid(row=0, column=0, sticky="new", padx=16, pady=14)
+        self._device_list.grid_columnconfigure(0, weight=1)
+
+        self.device_status = ctk.CTkLabel(
+            view, text="", text_color=MUTED, font=("Segoe UI", 13), anchor="w", justify="left", wraplength=540
+        )
+        self.device_status.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+        self._render_devices()
+
+    def _render_devices(self) -> None:
+        for child in self._device_list.winfo_children():
+            child.destroy()
+        info = self._detected
+        rows: list[tuple[str, str, str]] = [
+            (devices.AUTO, "Automatic", "Use the first GPU if one works, otherwise the CPU."),
+            (devices.CPU, "CPU", "Works everywhere. Slower on large events."),
+        ]
+        if info is None:
+            rows.append(("", "Looking for graphics cards...", ""))
+        else:
+            for item in info["devices"]:
+                rows.append((item["id"], item["name"], f"GPU {item['id'].split(':')[1]} · {item['memory_gb']} GB memory"))
+        saved = self.device_var.get()
+        known = {value for value, _title, _hint in rows if value}
+        if info is not None and saved not in known:
+            self.device_var.set(devices.AUTO)
+            self._save_device_choice(quiet=True)
+        for index, (value, title, hint) in enumerate(rows):
+            if not value:
+                ctk.CTkLabel(self._device_list, text=title, text_color=MUTED, font=("Segoe UI", 13), anchor="w").grid(
+                    row=index, column=0, sticky="w", pady=6
+                )
+                continue
+            block = ctk.CTkFrame(self._device_list, fg_color=WHITE, corner_radius=0)
+            block.grid(row=index, column=0, sticky="ew", pady=4)
+            ctk.CTkRadioButton(
+                block,
+                text=title,
+                value=value,
+                variable=self.device_var,
+                command=self._save_device_choice,
+                fg_color=BLUE,
+                hover_color=MINT,
+                border_color=LINE,
+                text_color=INK,
+                font=("Segoe UI", 14),
+            ).pack(anchor="w")
+            ctk.CTkLabel(block, text=hint, text_color=MUTED, font=("Segoe UI", 12), anchor="w").pack(
+                anchor="w", padx=(28, 0)
+            )
+        if info is None:
+            return
+        extra = list(info["other_gpus"])
+        if info["note"] or extra:
+            parts = []
+            if not info["devices"] and info["note"]:
+                parts.append(info["note"])
+            if extra:
+                parts.append(
+                    "Found but not usable here: " + ", ".join(extra) + ". Only NVIDIA graphics cards can be used."
+                )
+            if parts:
+                ctk.CTkLabel(
+                    self._device_list,
+                    text="\n".join(parts),
+                    text_color=MUTED,
+                    font=("Segoe UI", 12),
+                    anchor="w",
+                    justify="left",
+                    wraplength=500,
+                ).grid(row=len(rows), column=0, sticky="w", pady=(10, 0))
+
+    def _save_device_choice(self, quiet: bool = False) -> None:
+        try:
+            devices.save_choice(self.device_var.get())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Event photos", str(exc))
+            return
+        if not quiet:
+            self.device_status.configure(text="Saved. It applies the next time you sort.")
+
+    def _detect_devices(self) -> None:
+        if getattr(self, "_detecting", False):
+            return
+        self._detecting = True
+        self._detected = None
+        self._detect_result = None
+        self._render_devices()
+        self._enable_rescan(False)
+        self.device_status.configure(text="Checking this PC for graphics cards...")
+
+        def work() -> None:
+            result = {"devices": [], "other_gpus": [], "note": "Could not check for graphics cards."}
+            try:
+                proc = subprocess.run(  # noqa: S603 - fixed arguments, no shell
+                    [self._worker_python(), "-m", "src.devices"],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=120,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                lines = [line for line in proc.stdout.splitlines() if line.strip().startswith("{")]
+                if lines:
+                    result = json.loads(lines[-1])
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+            self._detect_result = result
+
+        threading.Thread(target=work, daemon=True).start()
+        self.root.after(150, self._poll_detect)
+
+    def _poll_detect(self) -> None:
+        if self._detect_result is None:
+            self.root.after(150, self._poll_detect)
+            return
+        self._detected = self._detect_result
+        self._detecting = False
+        self._enable_rescan(True)
+        self._render_devices()
+        count = len(self._detected["devices"])
+        self.device_status.configure(
+            text=f"Found {count} usable graphics card{'s' if count != 1 else ''}." if count else "No usable graphics card found."
+        )
+
+    def _enable_rescan(self, enabled: bool) -> None:
+        self.rescan_button.configure(
+            state="normal" if enabled else "disabled",
+            fg_color=SURFACE if enabled else DISABLED,
+            text_color=BLUE if enabled else DISABLED_TEXT,
+        )
+
+    def _show_settings(self) -> None:
+        self._screen = "settings"
+        self._selected = ""
+        self._paint_groups()
+        self._paint_nav()
+        self.sort_view.grid_remove()
+        self.group_view.grid_remove()
+        self.new_view.grid_remove()
+        self.device_var.set(devices.load_choice())
+        self.settings_view.grid(row=0, column=0, sticky="nsew")
+        self._flash_view()
+        self.device_status.configure(text="")
+        if self._detected is None:
+            self._detect_devices()
+        else:
+            self._render_devices()
 
     def _insert_group_button(self, name: str) -> None:
         glyph = GROUP_ICONS.get(name, "photos")
@@ -761,12 +983,16 @@ class SorterApp:
                 return
             if widget is getattr(self, "new_group_button", None) and self._screen == "new":
                 return
+            if widget is getattr(self, "settings_button", None) and self._screen == "settings":
+                return
             if self._is_selected_group(widget):
                 return
             self._animate_widget(widget, rest, hover, border=MINT if mint_border else None, text=text_hover)
 
         def leave(_event=None) -> None:
             if widget is getattr(self, "new_group_button", None) and self._screen == "new":
+                return
+            if widget is getattr(self, "settings_button", None) and self._screen == "settings":
                 return
             if self._is_selected_group(widget):
                 return
@@ -831,12 +1057,14 @@ class SorterApp:
                 self.sort_view.configure(fg_color=BG)
                 self.group_view.configure(fg_color=BG)
                 self.new_view.configure(fg_color=BG)
+                self.settings_view.configure(fg_color=BG)
                 return
             color = frames[index]
             self._main.configure(fg_color=color)
             self.sort_view.configure(fg_color=color)
             self.group_view.configure(fg_color=color)
             self.new_view.configure(fg_color=color)
+            self.settings_view.configure(fg_color=color)
             self.root.after(45, lambda: tick(index + 1))
 
         tick()
@@ -1028,6 +1256,7 @@ class SorterApp:
         self._paint_nav()
         self.group_view.grid_remove()
         self.new_view.grid_remove()
+        self.settings_view.grid_remove()
         self.sort_view.grid(row=0, column=0, sticky="nsew")
         self._flash_view()
 
@@ -1038,6 +1267,7 @@ class SorterApp:
         self._paint_nav()
         self.sort_view.grid_remove()
         self.group_view.grid_remove()
+        self.settings_view.grid_remove()
         self.new_name_var.set("")
         self.new_prompt.delete("1.0", "end")
         self.new_view.grid(row=0, column=0, sticky="nsew")
@@ -1064,6 +1294,10 @@ class SorterApp:
             self.new_group_button.configure(fg_color=MINT, text_color=BLUE_DEEP, image=self._icons["plus-dark"])
         else:
             self.new_group_button.configure(fg_color=WHITE, text_color=BLUE, image=self._icons["plus-dark"])
+        if self._screen == "settings":
+            self.settings_button.configure(fg_color=MINT, text_color=BLUE_DEEP, image=self._icons["chip-dark"])
+        else:
+            self.settings_button.configure(fg_color=CHIP, text_color=WHITE, image=self._icons["chip"])
 
     def _show_group(self, name: str) -> None:
         self._screen = "group"
@@ -1072,6 +1306,7 @@ class SorterApp:
         self._paint_nav()
         self.sort_view.grid_remove()
         self.new_view.grid_remove()
+        self.settings_view.grid_remove()
         self.group_view.grid(row=0, column=0, sticky="nsew")
         self.group_title.configure(text=name)
         self.group_status.configure(text="")
@@ -1161,6 +1396,8 @@ class SorterApp:
             str(output_dir),
             "--batch-size",
             "4",
+            "--device",
+            devices.load_choice(),
         ]
         if self.keep_var.get():
             command.append("--keep-existing")
