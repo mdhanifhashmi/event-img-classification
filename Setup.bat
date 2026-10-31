@@ -6,17 +6,42 @@ title Event Photos setup
 echo Setting up Event Photos. This needs internet and can take several minutes.
 echo.
 
+rem The libraries only ship ready-made packages for Python 3.10 to 3.14. Newer
+rem versions make pip try to compile them, which fails without build tools.
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,14) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo The existing environment uses an unsupported Python version. Recreating it...
+        rmdir /s /q ".venv"
+    )
+)
+
 if not exist ".venv\Scripts\python.exe" (
     where py >nul 2>&1
     if errorlevel 1 (
-        echo Python was not found. Install it from https://www.python.org/downloads/
+        echo Python was not found. Install Python 3.12 from https://www.python.org/downloads/release/python-3129/
         echo and tick "Add python.exe to PATH", then run this file again.
         echo.
         pause
         exit /b 1
     )
-    echo Creating the Python environment...
-    py -3 -m venv .venv
+    set "PYVER="
+    for %%V in (3.12 3.13 3.11 3.10 3.14) do (
+        if not defined PYVER (
+            py -%%V -c "import sys" >nul 2>&1
+            if not errorlevel 1 set "PYVER=%%V"
+        )
+    )
+    if not defined PYVER (
+        echo No supported Python was found. This app needs Python 3.10 to 3.14.
+        echo Newer versions such as 3.15 do not work yet. Install Python 3.12 from
+        echo https://www.python.org/downloads/release/python-3129/ and run this file again.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo Creating the Python environment with Python %PYVER%...
+    py -%PYVER% -m venv .venv
     if errorlevel 1 goto :failed
 )
 
